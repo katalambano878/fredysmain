@@ -1574,9 +1574,48 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                         const o = parseFloat(otherCost) || 0;
                                         const l = parseFloat(labourCost) || 0;
                                         const gross = f + o + l;
-                                        const sale = parseFloat(String(price)) || 0;
-                                        const profit = sale - gross;
+
+                                        // Pull the retail price from Pricing & Inventory.
+                                        // If the product is variant-priced (base price empty/0), fall back
+                                        // to the variant prices so the cashier still sees a real margin.
+                                        const basePrice = parseFloat(String(price)) || 0;
+                                        const variantPrices = variants
+                                            .map((v) => parseFloat(String(v.price)) || 0)
+                                            .filter((n) => n > 0);
+                                        const minVariant = variantPrices.length ? Math.min(...variantPrices) : 0;
+                                        const maxVariant = variantPrices.length ? Math.max(...variantPrices) : 0;
+
+                                        let sale = 0;
+                                        let priceSource: 'product' | 'variant-single' | 'variant-range' | 'none' = 'none';
+                                        let priceLabel = '';
+                                        if (basePrice > 0) {
+                                            sale = basePrice;
+                                            priceSource = 'product';
+                                            priceLabel = `GH₵ ${sale.toFixed(2)}`;
+                                        } else if (variantPrices.length > 0) {
+                                            sale = minVariant;
+                                            if (minVariant === maxVariant) {
+                                                priceSource = 'variant-single';
+                                                priceLabel = `GH₵ ${sale.toFixed(2)}`;
+                                            } else {
+                                                priceSource = 'variant-range';
+                                                priceLabel = `GH₵ ${minVariant.toFixed(2)} – GH₵ ${maxVariant.toFixed(2)}`;
+                                            }
+                                        } else {
+                                            priceLabel = 'Set price first';
+                                        }
+
+                                        const profit = sale > 0 ? sale - gross : 0;
                                         const margin = sale > 0 ? (profit / sale) * 100 : null;
+
+                                        const sourceHint = priceSource === 'product'
+                                            ? 'Pulled from Pricing & Inventory.'
+                                            : priceSource === 'variant-single'
+                                                ? 'Pulled from your variant prices (Variants tab).'
+                                                : priceSource === 'variant-range'
+                                                    ? 'Variant prices vary — margin is calculated on the lowest variant price (worst case).'
+                                                    : 'Add a base price in Pricing & Inventory or variant prices in the Variants tab to see margin.';
+
                                         return (
                                             <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-5 space-y-3">
                                                 <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Summary</h4>
@@ -1587,11 +1626,13 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                                     </div>
                                                     <div className="flex justify-between gap-4 border-b border-gray-200 pb-2">
                                                         <dt className="text-gray-600">Retail price</dt>
-                                                        <dd className="font-semibold text-gray-900">GH₵ {sale.toFixed(2)}</dd>
+                                                        <dd className={`font-semibold ${sale > 0 ? 'text-gray-900' : 'text-gray-400'}`}>{priceLabel}</dd>
                                                     </div>
                                                     <div className="flex justify-between gap-4 border-b border-gray-200 pb-2">
                                                         <dt className="text-gray-600">Gross profit (sales − gross cost)</dt>
-                                                        <dd className={`font-semibold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>GH₵ {profit.toFixed(2)}</dd>
+                                                        <dd className={`font-semibold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                                                            {sale > 0 ? `GH₵ ${profit.toFixed(2)}` : '—'}
+                                                        </dd>
                                                     </div>
                                                     <div className="flex justify-between gap-4 pb-1">
                                                         <dt className="text-gray-600">Margin</dt>
@@ -1600,6 +1641,10 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                                         </dd>
                                                     </div>
                                                 </dl>
+                                                <p className="text-xs text-gray-500 flex items-start gap-1.5 pt-1">
+                                                    <i className="ri-information-line mt-0.5" />
+                                                    <span>{sourceHint}</span>
+                                                </p>
                                             </div>
                                         );
                                     })()}
