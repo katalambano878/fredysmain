@@ -79,6 +79,7 @@ export async function GET(
           other_cost,
           labour_cost,
           gross_cost,
+          per_variant_costs,
           production_staff_id,
           production_staff ( id, full_name )
         )

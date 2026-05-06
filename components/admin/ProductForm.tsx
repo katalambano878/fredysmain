@@ -260,12 +260,17 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
     })();
     const [copEnabled, setCopEnabled] = useState(() => {
         if (!initialCopRow) return false;
+        const hasPerVariant =
+            initialCopRow.per_variant_costs &&
+            typeof initialCopRow.per_variant_costs === 'object' &&
+            Object.keys(initialCopRow.per_variant_costs).length > 0;
         return (
             Number(initialCopRow.fabric_cost) > 0 ||
             Number(initialCopRow.other_cost) > 0 ||
             Number(initialCopRow.labour_cost) > 0 ||
             !!initialCopRow.production_staff_id ||
-            !!(initialCopRow.cop_description && String(initialCopRow.cop_description).trim())
+            !!(initialCopRow.cop_description && String(initialCopRow.cop_description).trim()) ||
+            !!hasPerVariant
         );
     });
     const [copDescription, setCopDescription] = useState(initialCopRow?.cop_description || '');
@@ -280,6 +285,29 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
     );
     const [productionStaffId, setProductionStaffId] = useState<string>(initialCopRow?.production_staff_id || '');
     const [productionStaff, setProductionStaff] = useState<{ id: string; full_name: string }[]>([]);
+
+    // Per-variant cost overrides — keyed by `${color}|||${size}` (same key the
+    // variants tab uses). Each entry only stores the fields that actually
+    // override the product-level defaults; empty strings mean "inherit".
+    type VariantCostInput = { fabric: string; other: string; labour: string };
+    const initialPerVariantCosts: Record<string, VariantCostInput> = (() => {
+        const raw = initialCopRow?.per_variant_costs;
+        if (!raw || typeof raw !== 'object') return {};
+        const out: Record<string, VariantCostInput> = {};
+        for (const [key, value] of Object.entries(raw as Record<string, any>)) {
+            if (!value || typeof value !== 'object') continue;
+            out[key] = {
+                fabric: value.fabric_cost != null ? String(value.fabric_cost) : '',
+                other: value.other_cost != null ? String(value.other_cost) : '',
+                labour: value.labour_cost != null ? String(value.labour_cost) : '',
+            };
+        }
+        return out;
+    })();
+    const [perVariantCosts, setPerVariantCosts] = useState<Record<string, VariantCostInput>>(initialPerVariantCosts);
+    const [perVariantCopEnabled, setPerVariantCopEnabled] = useState<boolean>(
+        Object.keys(initialPerVariantCosts).length > 0
+    );
 
     const generateSeoFields = (name: string, desc: string) => {
         const title = name ? `${name} | Freby’s Fashion GH` : '';
@@ -520,6 +548,26 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                 variants: variantsPayload,
             };
 
+            // Only ship per-variant entries that (a) match a current variant key
+            // and (b) actually contain at least one numeric override. Anything else
+            // is dropped server-side, but doing it here as well keeps the payload
+            // small and prevents stale entries (e.g. a deleted size) from sticking.
+            const activeVariantKeys = new Set(variantCombinations.map((c) => c.key));
+            const perVariantPayload: Record<string, { fabric_cost?: number; other_cost?: number; labour_cost?: number }> = {};
+            if (perVariantCopEnabled) {
+                for (const [key, val] of Object.entries(perVariantCosts)) {
+                    if (!activeVariantKeys.has(key)) continue;
+                    const entry: { fabric_cost?: number; other_cost?: number; labour_cost?: number } = {};
+                    const f = parseFloat(val.fabric);
+                    const o = parseFloat(val.other);
+                    const l = parseFloat(val.labour);
+                    if (Number.isFinite(f) && f > 0) entry.fabric_cost = f;
+                    if (Number.isFinite(o) && o > 0) entry.other_cost = o;
+                    if (Number.isFinite(l) && l > 0) entry.labour_cost = l;
+                    if (Object.keys(entry).length > 0) perVariantPayload[key] = entry;
+                }
+            }
+
             const copPayload = {
                 enabled: copEnabled,
                 cop_description: copDescription.trim() || null,
@@ -527,6 +575,7 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                 other_cost: parseFloat(otherCost) || 0,
                 labour_cost: parseFloat(labourCost) || 0,
                 production_staff_id: productionStaffId || null,
+                per_variant_costs: perVariantPayload,
             };
 
             let productId = initialData?.id;
@@ -1500,44 +1549,50 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                         />
                                     </div>
 
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-900 mb-2">Fabric cost (GH₵)</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                step="0.01"
-                                                value={fabricCost}
-                                                onChange={(e) => setFabricCost(e.target.value)}
-                                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-600 focus:border-gray-600"
-                                                placeholder="0.00"
-                                            />
+                                    <div>
+                                        <div className="flex items-baseline justify-between gap-4 mb-2">
+                                            <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Default per-unit cost</h4>
+                                            <span className="text-xs text-gray-500">Applies to every variant unless you override below</span>
                                         </div>
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-900 mb-2">Other costs (GH₵)</label>
-                                            <p className="text-xs text-gray-500 mb-1">Lining, net, zip, elastic, etc.</p>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                step="0.01"
-                                                value={otherCost}
-                                                onChange={(e) => setOtherCost(e.target.value)}
-                                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-600 focus:border-gray-600"
-                                                placeholder="0.00"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-900 mb-2">Labour cost (GH₵)</label>
-                                            <p className="text-xs text-gray-500 mb-1">Per unit (one garment)</p>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                step="0.01"
-                                                value={labourCost}
-                                                onChange={(e) => setLabourCost(e.target.value)}
-                                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-600 focus:border-gray-600"
-                                                placeholder="0.00"
-                                            />
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-900 mb-2">Fabric cost (GH₵)</label>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={fabricCost}
+                                                    onChange={(e) => setFabricCost(e.target.value)}
+                                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-600 focus:border-gray-600"
+                                                    placeholder="0.00"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-900 mb-2">Other costs (GH₵)</label>
+                                                <p className="text-xs text-gray-500 mb-1">Lining, net, zip, elastic, etc.</p>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={otherCost}
+                                                    onChange={(e) => setOtherCost(e.target.value)}
+                                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-600 focus:border-gray-600"
+                                                    placeholder="0.00"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-900 mb-2">Labour cost (GH₵)</label>
+                                                <p className="text-xs text-gray-500 mb-1">Per unit (one garment)</p>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={labourCost}
+                                                    onChange={(e) => setLabourCost(e.target.value)}
+                                                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-600 focus:border-gray-600"
+                                                    placeholder="0.00"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
 
@@ -1568,6 +1623,220 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                             </Link>
                                         </div>
                                     </div>
+
+                                    {/* Per-variant overrides — opt-in, hidden until needed */}
+                                    {variantCombinations.length > 0 && (
+                                        <div className="rounded-xl border-2 border-gray-200 p-5 space-y-4">
+                                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                                                <div>
+                                                    <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Per-variant cost</h4>
+                                                    <p className="text-xs text-gray-500 mt-1 max-w-xl">
+                                                        Larger sizes often use more fabric or labour. Turn this on to override any of the default costs for specific variants. Empty fields inherit the defaults above.
+                                                    </p>
+                                                </div>
+                                                <label className="flex items-center gap-2 cursor-pointer shrink-0">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={perVariantCopEnabled}
+                                                        onChange={(e) => setPerVariantCopEnabled(e.target.checked)}
+                                                        className="rounded border-gray-300 w-4 h-4"
+                                                    />
+                                                    <span className="text-sm font-semibold text-gray-800">Different costs per variant</span>
+                                                </label>
+                                            </div>
+
+                                            {perVariantCopEnabled && (() => {
+                                                const defF = parseFloat(fabricCost) || 0;
+                                                const defO = parseFloat(otherCost) || 0;
+                                                const defL = parseFloat(labourCost) || 0;
+                                                const defaultUnit = defF + defO + defL;
+
+                                                const overriddenCount = variantCombinations.filter((c) => {
+                                                    const ov = perVariantCosts[c.key];
+                                                    return ov && (ov.fabric || ov.other || ov.labour);
+                                                }).length;
+
+                                                const updateOverride = (key: string, field: 'fabric' | 'other' | 'labour', value: string) => {
+                                                    setPerVariantCosts((prev) => {
+                                                        const existing = prev[key] || { fabric: '', other: '', labour: '' };
+                                                        return { ...prev, [key]: { ...existing, [field]: value } };
+                                                    });
+                                                };
+                                                const resetRow = (key: string) => {
+                                                    setPerVariantCosts((prev) => {
+                                                        const next = { ...prev };
+                                                        delete next[key];
+                                                        return next;
+                                                    });
+                                                };
+                                                const applyDefaultsToAll = () => {
+                                                    if (!fabricCost && !otherCost && !labourCost) return;
+                                                    const seed: Record<string, VariantCostInput> = {};
+                                                    for (const c of variantCombinations) {
+                                                        seed[c.key] = {
+                                                            fabric: fabricCost || '',
+                                                            other: otherCost || '',
+                                                            labour: labourCost || '',
+                                                        };
+                                                    }
+                                                    setPerVariantCosts(seed);
+                                                };
+                                                const clearAll = () => setPerVariantCosts({});
+
+                                                return (
+                                                    <div className="space-y-3">
+                                                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                                                            <span className="text-gray-500">
+                                                                {overriddenCount > 0
+                                                                    ? `${overriddenCount} of ${variantCombinations.length} variants have an override`
+                                                                    : `${variantCombinations.length} variants — none overridden yet`}
+                                                            </span>
+                                                            <div className="flex gap-2 ml-auto">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={applyDefaultsToAll}
+                                                                    disabled={!fabricCost && !otherCost && !labourCost}
+                                                                    className="px-3 py-1.5 rounded-md border border-gray-300 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                                    title="Pre-fill every row with the default values so you can tweak from there"
+                                                                >
+                                                                    <i className="ri-magic-line mr-1" />
+                                                                    Pre-fill from defaults
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={clearAll}
+                                                                    disabled={overriddenCount === 0}
+                                                                    className="px-3 py-1.5 rounded-md border border-gray-300 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                                >
+                                                                    Clear all overrides
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="overflow-x-auto -mx-5 sm:mx-0">
+                                                            <table className="w-full text-sm">
+                                                                <thead>
+                                                                    <tr className="text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+                                                                        <th className="font-semibold py-2 pl-5 sm:pl-3 pr-2">Variant</th>
+                                                                        <th className="font-semibold py-2 px-2">Stock</th>
+                                                                        <th className="font-semibold py-2 px-2">Fabric</th>
+                                                                        <th className="font-semibold py-2 px-2">Other</th>
+                                                                        <th className="font-semibold py-2 px-2">Labour</th>
+                                                                        <th className="font-semibold py-2 px-2 text-right">Per-unit</th>
+                                                                        <th className="font-semibold py-2 px-2 text-right">Inventory cost</th>
+                                                                        <th className="font-semibold py-2 pr-5 sm:pr-3 pl-2"></th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {variantCombinations.map((c) => {
+                                                                        const ov = perVariantCosts[c.key];
+                                                                        const fabric = ov?.fabric ? parseFloat(ov.fabric) : defF;
+                                                                        const other = ov?.other ? parseFloat(ov.other) : defO;
+                                                                        const labour = ov?.labour ? parseFloat(ov.labour) : defL;
+                                                                        const unit = (Number.isFinite(fabric) ? fabric : 0)
+                                                                            + (Number.isFinite(other) ? other : 0)
+                                                                            + (Number.isFinite(labour) ? labour : 0);
+                                                                        const variantStock = parseInt(variantData[c.key]?.stock || '0') || 0;
+                                                                        const inventoryCost = unit * variantStock;
+                                                                        const hasOverride = !!(ov && (ov.fabric || ov.other || ov.labour));
+                                                                        const label = c.color && c.size
+                                                                            ? `${c.color} · ${c.size}`
+                                                                            : c.size || c.color || 'Default';
+
+                                                                        return (
+                                                                            <tr key={c.key} className="border-b border-gray-100 last:border-b-0 align-middle">
+                                                                                <td className="py-2 pl-5 sm:pl-3 pr-2">
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        {c.colorHex && (
+                                                                                            <span
+                                                                                                className="w-3 h-3 rounded-full border border-gray-300 shrink-0"
+                                                                                                style={{ backgroundColor: c.colorHex }}
+                                                                                            />
+                                                                                        )}
+                                                                                        <span className="font-medium text-gray-900 whitespace-nowrap">{label}</span>
+                                                                                        {hasOverride && (
+                                                                                            <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                                                                                                Custom
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </td>
+                                                                                <td className="py-2 px-2 text-gray-700 whitespace-nowrap">{variantStock}</td>
+                                                                                <td className="py-2 px-2">
+                                                                                    <input
+                                                                                        type="number"
+                                                                                        min="0"
+                                                                                        step="0.01"
+                                                                                        value={ov?.fabric || ''}
+                                                                                        onChange={(e) => updateOverride(c.key, 'fabric', e.target.value)}
+                                                                                        placeholder={fabricCost ? `${defF}` : '—'}
+                                                                                        className="w-20 px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-1 focus:ring-gray-600 focus:border-gray-600"
+                                                                                    />
+                                                                                </td>
+                                                                                <td className="py-2 px-2">
+                                                                                    <input
+                                                                                        type="number"
+                                                                                        min="0"
+                                                                                        step="0.01"
+                                                                                        value={ov?.other || ''}
+                                                                                        onChange={(e) => updateOverride(c.key, 'other', e.target.value)}
+                                                                                        placeholder={otherCost ? `${defO}` : '—'}
+                                                                                        className="w-20 px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-1 focus:ring-gray-600 focus:border-gray-600"
+                                                                                    />
+                                                                                </td>
+                                                                                <td className="py-2 px-2">
+                                                                                    <input
+                                                                                        type="number"
+                                                                                        min="0"
+                                                                                        step="0.01"
+                                                                                        value={ov?.labour || ''}
+                                                                                        onChange={(e) => updateOverride(c.key, 'labour', e.target.value)}
+                                                                                        placeholder={labourCost ? `${defL}` : '—'}
+                                                                                        className="w-20 px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-1 focus:ring-gray-600 focus:border-gray-600"
+                                                                                    />
+                                                                                </td>
+                                                                                <td className="py-2 px-2 text-right font-semibold text-gray-900 whitespace-nowrap">
+                                                                                    {unit > 0 ? `GH₵ ${unit.toFixed(2)}` : '—'}
+                                                                                </td>
+                                                                                <td className="py-2 px-2 text-right text-gray-900 whitespace-nowrap">
+                                                                                    {variantStock > 0 && unit > 0 ? `GH₵ ${inventoryCost.toFixed(2)}` : '—'}
+                                                                                </td>
+                                                                                <td className="py-2 pr-5 sm:pr-3 pl-2 text-right">
+                                                                                    {hasOverride && (
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => resetRow(c.key)}
+                                                                                            className="text-xs font-semibold text-gray-500 hover:text-gray-900 underline"
+                                                                                            title="Reset this variant to use the default costs"
+                                                                                        >
+                                                                                            Reset
+                                                                                        </button>
+                                                                                    )}
+                                                                                </td>
+                                                                            </tr>
+                                                                        );
+                                                                    })}
+                                                                </tbody>
+                                                                {defaultUnit > 0 && (
+                                                                    <tfoot>
+                                                                        <tr className="border-t-2 border-gray-200 bg-gray-50/60">
+                                                                            <td colSpan={5} className="py-2 pl-5 sm:pl-3 pr-2 text-xs text-gray-500">
+                                                                                Default per-unit cost
+                                                                            </td>
+                                                                            <td className="py-2 px-2 text-right font-semibold text-gray-900 whitespace-nowrap">
+                                                                                GH₵ {defaultUnit.toFixed(2)}
+                                                                            </td>
+                                                                            <td colSpan={2} />
+                                                                        </tr>
+                                                                    </tfoot>
+                                                                )}
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
 
                                     {(() => {
                                         const f = parseFloat(fabricCost) || 0;
@@ -1616,35 +1885,125 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                                     ? 'Variant prices vary — margin is calculated on the lowest variant price (worst case).'
                                                     : 'Add a base price in Pricing & Inventory or variant prices in the Variants tab to see margin.';
 
+                                        // Inventory totals — multiply each variant's per-unit cost (with
+                                        // any override) by its current stock, and value the same units at
+                                        // their variant retail price (falling back to the base price).
+                                        const baseStock = parseInt(String(stock || '0')) || 0;
+                                        let totalUnits = 0;
+                                        let totalInventoryCost = 0;
+                                        let totalInventoryRetail = 0;
+                                        const baseUnitCost = gross;
+                                        if (variantCombinations.length > 0) {
+                                            for (const c of variantCombinations) {
+                                                const ov = perVariantCopEnabled ? perVariantCosts[c.key] : undefined;
+                                                const fabric = ov?.fabric ? parseFloat(ov.fabric) : f;
+                                                const other = ov?.other ? parseFloat(ov.other) : o;
+                                                const labour = ov?.labour ? parseFloat(ov.labour) : l;
+                                                const unitCost = (Number.isFinite(fabric) ? fabric : 0)
+                                                    + (Number.isFinite(other) ? other : 0)
+                                                    + (Number.isFinite(labour) ? labour : 0);
+                                                const variantStock = parseInt(variantData[c.key]?.stock || '0') || 0;
+                                                const variantPrice = parseFloat(variantData[c.key]?.price || '') || basePrice;
+                                                totalUnits += variantStock;
+                                                totalInventoryCost += unitCost * variantStock;
+                                                totalInventoryRetail += variantPrice * variantStock;
+                                            }
+                                        } else {
+                                            totalUnits = baseStock;
+                                            totalInventoryCost = baseUnitCost * baseStock;
+                                            totalInventoryRetail = basePrice * baseStock;
+                                        }
+                                        const totalInventoryProfit = totalInventoryRetail - totalInventoryCost;
+                                        const totalInventoryMargin = totalInventoryRetail > 0
+                                            ? (totalInventoryProfit / totalInventoryRetail) * 100
+                                            : null;
+                                        const overrideCount = perVariantCopEnabled
+                                            ? variantCombinations.filter((c) => {
+                                                const ov = perVariantCosts[c.key];
+                                                return ov && (ov.fabric || ov.other || ov.labour);
+                                            }).length
+                                            : 0;
+
                                         return (
-                                            <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-5 space-y-3">
-                                                <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Summary</h4>
-                                                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                                                    <div className="flex justify-between gap-4 border-b border-gray-200 pb-2">
-                                                        <dt className="text-gray-600">Gross cost</dt>
-                                                        <dd className="font-semibold text-gray-900">GH₵ {gross.toFixed(2)}</dd>
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                                {/* Per-unit summary */}
+                                                <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-5 space-y-3">
+                                                    <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Per-unit margin</h4>
+                                                    <dl className="space-y-2 text-sm">
+                                                        <div className="flex justify-between gap-4 border-b border-gray-200 pb-2">
+                                                            <dt className="text-gray-600">Default gross cost</dt>
+                                                            <dd className="font-semibold text-gray-900">GH₵ {gross.toFixed(2)}</dd>
+                                                        </div>
+                                                        <div className="flex justify-between gap-4 border-b border-gray-200 pb-2">
+                                                            <dt className="text-gray-600">Retail price</dt>
+                                                            <dd className={`font-semibold ${sale > 0 ? 'text-gray-900' : 'text-gray-400'}`}>{priceLabel}</dd>
+                                                        </div>
+                                                        <div className="flex justify-between gap-4 border-b border-gray-200 pb-2">
+                                                            <dt className="text-gray-600">Gross profit / unit</dt>
+                                                            <dd className={`font-semibold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                                                                {sale > 0 ? `GH₵ ${profit.toFixed(2)}` : '—'}
+                                                            </dd>
+                                                        </div>
+                                                        <div className="flex justify-between gap-4 pb-1">
+                                                            <dt className="text-gray-600">Margin</dt>
+                                                            <dd className="font-semibold text-gray-900">
+                                                                {margin != null ? `${margin.toFixed(1)}%` : '—'}
+                                                            </dd>
+                                                        </div>
+                                                    </dl>
+                                                    <p className="text-xs text-gray-500 flex items-start gap-1.5 pt-1">
+                                                        <i className="ri-information-line mt-0.5" />
+                                                        <span>{sourceHint}</span>
+                                                    </p>
+                                                </div>
+
+                                                {/* Inventory-on-hand summary */}
+                                                <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50/40 p-5 space-y-3">
+                                                    <div className="flex items-baseline justify-between gap-3">
+                                                        <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Inventory on hand</h4>
+                                                        {overrideCount > 0 && (
+                                                            <span className="text-[10px] font-bold uppercase tracking-wide text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                                                                {overrideCount} override{overrideCount === 1 ? '' : 's'}
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                    <div className="flex justify-between gap-4 border-b border-gray-200 pb-2">
-                                                        <dt className="text-gray-600">Retail price</dt>
-                                                        <dd className={`font-semibold ${sale > 0 ? 'text-gray-900' : 'text-gray-400'}`}>{priceLabel}</dd>
-                                                    </div>
-                                                    <div className="flex justify-between gap-4 border-b border-gray-200 pb-2">
-                                                        <dt className="text-gray-600">Gross profit (sales − gross cost)</dt>
-                                                        <dd className={`font-semibold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                                                            {sale > 0 ? `GH₵ ${profit.toFixed(2)}` : '—'}
-                                                        </dd>
-                                                    </div>
-                                                    <div className="flex justify-between gap-4 pb-1">
-                                                        <dt className="text-gray-600">Margin</dt>
-                                                        <dd className="font-semibold text-gray-900">
-                                                            {margin != null ? `${margin.toFixed(1)}%` : '—'}
-                                                        </dd>
-                                                    </div>
-                                                </dl>
-                                                <p className="text-xs text-gray-500 flex items-start gap-1.5 pt-1">
-                                                    <i className="ri-information-line mt-0.5" />
-                                                    <span>{sourceHint}</span>
-                                                </p>
+                                                    <dl className="space-y-2 text-sm">
+                                                        <div className="flex justify-between gap-4 border-b border-emerald-200/70 pb-2">
+                                                            <dt className="text-gray-600">Total units in stock</dt>
+                                                            <dd className="font-semibold text-gray-900">{totalUnits.toLocaleString()}</dd>
+                                                        </div>
+                                                        <div className="flex justify-between gap-4 border-b border-emerald-200/70 pb-2">
+                                                            <dt className="text-gray-600">Total cost (cost × stock)</dt>
+                                                            <dd className="font-semibold text-gray-900">
+                                                                {totalUnits > 0 ? `GH₵ ${totalInventoryCost.toFixed(2)}` : '—'}
+                                                            </dd>
+                                                        </div>
+                                                        <div className="flex justify-between gap-4 border-b border-emerald-200/70 pb-2">
+                                                            <dt className="text-gray-600">Total retail value</dt>
+                                                            <dd className="font-semibold text-gray-900">
+                                                                {totalUnits > 0 && totalInventoryRetail > 0 ? `GH₵ ${totalInventoryRetail.toFixed(2)}` : '—'}
+                                                            </dd>
+                                                        </div>
+                                                        <div className="flex justify-between gap-4 border-b border-emerald-200/70 pb-2">
+                                                            <dt className="text-gray-600">Potential gross profit</dt>
+                                                            <dd className={`font-semibold ${totalInventoryProfit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                                                                {totalUnits > 0 && totalInventoryRetail > 0 ? `GH₵ ${totalInventoryProfit.toFixed(2)}` : '—'}
+                                                            </dd>
+                                                        </div>
+                                                        <div className="flex justify-between gap-4 pb-1">
+                                                            <dt className="text-gray-600">Margin</dt>
+                                                            <dd className="font-semibold text-gray-900">
+                                                                {totalInventoryMargin != null ? `${totalInventoryMargin.toFixed(1)}%` : '—'}
+                                                            </dd>
+                                                        </div>
+                                                    </dl>
+                                                    <p className="text-xs text-gray-500 flex items-start gap-1.5 pt-1">
+                                                        <i className="ri-information-line mt-0.5" />
+                                                        <span>
+                                                            Calculated from your current stock × per-unit cost (using overrides where set) and your variant retail prices.
+                                                        </span>
+                                                    </p>
+                                                </div>
                                             </div>
                                         );
                                     })()}
