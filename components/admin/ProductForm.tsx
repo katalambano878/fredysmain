@@ -1625,13 +1625,31 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                     </div>
 
                                     {/* Per-variant overrides — opt-in, hidden until needed */}
-                                    {variantCombinations.length > 0 && (
+                                    {variantCombinations.length === 0 ? (
+                                        <div className="rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 p-5 flex items-start gap-3">
+                                            <i className="ri-information-line text-lg text-gray-400 mt-0.5" />
+                                            <div className="text-sm text-gray-600">
+                                                <p className="font-semibold text-gray-800 mb-1">Want different costs per size (e.g. Age 1 vs Age 12)?</p>
+                                                <p>
+                                                    Head over to the{' '}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setActiveTab('variants')}
+                                                        className="text-brand-greenDark font-semibold underline"
+                                                    >
+                                                        Variants tab
+                                                    </button>
+                                                    {' '}and add your sizes/colours first. The moment you do, a per-variant cost table will appear here so you can override the defaults above for any variant that costs more (or less) to make.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ) : (
                                         <div className="rounded-xl border-2 border-gray-200 p-5 space-y-4">
                                             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                                                 <div>
                                                     <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Per-variant cost</h4>
                                                     <p className="text-xs text-gray-500 mt-1 max-w-xl">
-                                                        Larger sizes often use more fabric or labour. Turn this on to override any of the default costs for specific variants. Empty fields inherit the defaults above.
+                                                        Larger sizes often use more fabric or labour. Turn this on to override any of the default costs for specific variants. Empty fields inherit the defaults above. Each variant&apos;s cost is multiplied by its stock to get the inventory totals on the right.
                                                     </p>
                                                 </div>
                                                 <label className="flex items-center gap-2 cursor-pointer shrink-0">
