@@ -30,6 +30,10 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
     const [description, setDescription] = useState(initialData?.description || '');
     const [status, setStatus] = useState(initialData?.status || 'Active');
     const [featured, setFeatured] = useState(initialData?.featured || false);
+    // Target audience: 'male' (boys), 'female' (girls) or 'unisex'. Defaults to unisex.
+    const [gender, setGender] = useState<'male' | 'female' | 'unisex'>(
+        initialData?.gender === 'male' || initialData?.gender === 'female' ? initialData.gender : 'unisex'
+    );
     const [preorderShipping, setPreorderShipping] = useState(initialData?.metadata?.preorder_shipping || '');
     const [activeTab, setActiveTab] = useState('general');
     const [aiGenerating, setAiGenerating] = useState(false);
@@ -536,6 +540,7 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                 moq: parseInt(moq) || 1,
                 status: status.toLowerCase(),
                 featured,
+                gender,
                 seo_title: seoTitle,
                 seo_description: metaDescription,
                 tags: (keywords as string).split(',').map((k: string) => k.trim()).filter(Boolean),
@@ -784,6 +789,38 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                         <option>Archived</option>
                                     </select>
                                 </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-semibold text-gray-900 mb-2">
+                                    Gender / Who is it for?
+                                </label>
+                                <div className="inline-flex rounded-lg border-2 border-gray-300 overflow-hidden">
+                                    {([
+                                        { value: 'male', label: 'Male', icon: 'ri-men-line' },
+                                        { value: 'female', label: 'Female', icon: 'ri-women-line' },
+                                        { value: 'unisex', label: 'Unisex', icon: 'ri-genderless-line' },
+                                    ] as const).map((opt, idx) => (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() => setGender(opt.value)}
+                                            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-semibold transition-colors cursor-pointer ${idx > 0 ? 'border-l-2 border-gray-300' : ''} ${
+                                                gender === opt.value
+                                                    ? opt.value === 'male'
+                                                        ? 'bg-sky-600 text-white'
+                                                        : opt.value === 'female'
+                                                            ? 'bg-pink-600 text-white'
+                                                            : 'bg-gray-800 text-white'
+                                                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            <i className={opt.icon}></i>
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="text-xs text-gray-500 mt-2">Used to filter products by gender in the admin and storefront. Choose Unisex if it suits any child.</p>
                             </div>
 
                             <div className="flex items-center space-x-3">

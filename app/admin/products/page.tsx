@@ -11,6 +11,7 @@ export default function ProductsPage() {
   const [sortBy, setSortBy] = useState('newest');
   const [searchQuery, setSearchQuery] = useState('');
   const [stockFilter, setStockFilter] = useState<'out_of_stock' | 'low_stock' | null>(null);
+  const [genderFilter, setGenderFilter] = useState<'all' | 'male' | 'female' | 'unisex'>('all');
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
@@ -125,6 +126,10 @@ export default function ProductsPage() {
       (product.sku && product.sku.toLowerCase().includes(term)) ||
       (product.category && product.category.toLowerCase().includes(term));
     if (!matchesSearch) return false;
+    if (genderFilter !== 'all') {
+      const g = product.gender || 'unisex';
+      if (g !== genderFilter) return false;
+    }
     if (stockFilter === 'out_of_stock') return (product.quantity ?? 0) === 0;
     if (stockFilter === 'low_stock') {
       const threshold = product.metadata?.low_stock_threshold ?? 5;
@@ -133,6 +138,12 @@ export default function ProductsPage() {
     }
     return true;
   });
+
+  const genderBadge = (g?: string) => {
+    if (g === 'male') return { label: 'Male', className: 'bg-sky-100 text-sky-700', icon: 'ri-men-line' };
+    if (g === 'female') return { label: 'Female', className: 'bg-pink-100 text-pink-700', icon: 'ri-women-line' };
+    return { label: 'Unisex', className: 'bg-gray-100 text-gray-600', icon: 'ri-genderless-line' };
+  };
 
   return (
     <div className="space-y-6">
@@ -220,6 +231,17 @@ export default function ProductsPage() {
                 <i className="ri-filter-line mr-2"></i>
                 Filters
               </button>
+              <select
+                value={genderFilter}
+                onChange={(e) => setGenderFilter(e.target.value as 'all' | 'male' | 'female' | 'unisex')}
+                className="px-4 py-3 pr-8 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-600 focus:border-gray-600 font-medium cursor-pointer"
+                title="Filter by gender"
+              >
+                <option value="all">All Genders</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="unisex">Unisex</option>
+              </select>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
@@ -337,7 +359,14 @@ export default function ProductsPage() {
                           />
                         </div>
                         <div>
-                          <p className="font-semibold text-gray-900">{product.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-gray-900">{product.name}</p>
+                            {(() => { const b = genderBadge(product.gender); return (
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${b.className}`}>
+                                <i className={b.icon}></i>{b.label}
+                              </span>
+                            ); })()}
+                          </div>
                           <div className="flex items-center mt-1">
                             <span className="text-xs text-gray-400">ID: {product.id.substring(0, 8)}...</span>
                           </div>
@@ -402,9 +431,16 @@ export default function ProductsPage() {
                     />
                   </div>
                 </div>
-                <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold mb-2 capitalize ${statusColors[product.status] || 'bg-gray-100 text-gray-600'}`}>
-                  {product.status}
-                </span>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold capitalize ${statusColors[product.status] || 'bg-gray-100 text-gray-600'}`}>
+                    {product.status}
+                  </span>
+                  {(() => { const b = genderBadge(product.gender); return (
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${b.className}`}>
+                      <i className={b.icon}></i>{b.label}
+                    </span>
+                  ); })()}
+                </div>
                 <h3 className="font-semibold text-gray-900 mb-1 line-clamp-2">{product.name}</h3>
                 <p className="text-sm text-gray-600 mb-2">{product.category}</p>
                 <div className="flex items-center justify-between mb-3">
