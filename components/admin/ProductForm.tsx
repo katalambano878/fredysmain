@@ -1216,15 +1216,21 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                                                 <span
                                                                     ref={dragProvided.innerRef}
                                                                     {...dragProvided.draggableProps}
-                                                                    {...dragProvided.dragHandleProps}
-                                                                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border rounded-full text-sm shadow-sm font-medium cursor-grab active:cursor-grabbing select-none transition-shadow ${snapshot.isDragging ? 'border-gray-400 shadow-md ring-2 ring-gray-200' : 'border-gray-200'}`}
+                                                                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border rounded-full text-sm shadow-sm font-medium select-none transition-shadow ${snapshot.isDragging ? 'border-gray-400 shadow-md ring-2 ring-gray-200' : 'border-gray-200'}`}
                                                                 >
-                                                                    <i className="ri-draggable text-gray-300 text-xs mr-0.5"></i>
+                                                                    {/* Drag handle is the grip icon ONLY, so the edit/delete buttons stay clickable */}
+                                                                    <span
+                                                                        {...dragProvided.dragHandleProps}
+                                                                        className="cursor-grab active:cursor-grabbing flex items-center text-gray-300 hover:text-gray-500"
+                                                                        title="Drag to reorder"
+                                                                    >
+                                                                        <i className="ri-draggable text-xs"></i>
+                                                                    </span>
                                                                     {size}
                                                                     <button type="button" onClick={() => { const v = prompt('Edit option name:', size); if (v != null && v.trim()) editSize(size, v.trim()); }} className="text-gray-400 hover:text-gray-700 ml-0.5" title="Edit name">
                                                                         <i className="ri-pencil-line text-sm"></i>
                                                                     </button>
-                                                                    <button type="button" onClick={() => toggleSize(size)} className="text-gray-400 hover:text-red-500 ml-0.5">
+                                                                    <button type="button" onClick={() => toggleSize(size)} className="text-gray-400 hover:text-red-500 ml-0.5" title="Remove this size">
                                                                         <i className="ri-close-line text-sm"></i>
                                                                     </button>
                                                                 </span>
@@ -1284,6 +1290,9 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                                     <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Variant image</th>
                                                     <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Price (GH₵)</th>
                                                     <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Stock</th>
+                                                    {selectedColors.length === 0 && (
+                                                        <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">Remove</th>
+                                                    )}
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -1373,6 +1382,18 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                                                     placeholder="0"
                                                                 />
                                                             </td>
+                                                            {selectedColors.length === 0 && (
+                                                                <td className="py-3 px-4 text-right">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => toggleSize(combo.size)}
+                                                                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                                                        title={`Delete ${combo.size} variant`}
+                                                                    >
+                                                                        <i className="ri-delete-bin-line text-lg"></i>
+                                                                    </button>
+                                                                </td>
+                                                            )}
                                                         </tr>
                                                     );
                                                 })}
