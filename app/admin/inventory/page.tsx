@@ -24,11 +24,13 @@ interface ProductRow {
     productQuantity: number;
     price: number;
     status: string; // products.status (active/draft/archived…)
+    gender: 'male' | 'female' | 'unisex';
     variants: VariantRow[];
 }
 
 type StockStatus = 'good' | 'low' | 'out';
 type StockFilter = 'all' | 'good' | 'low' | 'out';
+type GenderFilter = 'all' | 'male' | 'female';
 
 const LOW_STOCK_THRESHOLD = 10;
 
@@ -88,6 +90,7 @@ export default function InventoryManagementPage() {
     const [categoryFilter, setCategoryFilter] = useState<string>('all');
     const [colorFilter, setColorFilter] = useState<string>('all');
     const [variantFilter, setVariantFilter] = useState<string>('all');
+    const [genderFilter, setGenderFilter] = useState<GenderFilter>('all');
 
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
     const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
@@ -109,6 +112,7 @@ export default function InventoryManagementPage() {
                     price,
                     quantity,
                     status,
+                    gender,
                     category_id,
                     categories(name),
                     product_variants(id, name, option1, option2, quantity, price, sort_order)
@@ -139,6 +143,7 @@ export default function InventoryManagementPage() {
                     productQuantity: Number(p.quantity ?? 0) || 0,
                     price: Number(p.price ?? 0) || 0,
                     status: p.status || 'active',
+                    gender: (p.gender === 'male' || p.gender === 'female') ? p.gender : 'unisex',
                     variants,
                 };
             });
@@ -160,6 +165,17 @@ export default function InventoryManagementPage() {
         return p.variants.reduce((s, v) => s + v.quantity, 0);
     }
 
+    /**
+     * Products scoped to the selected gender. Everything below (quick-filter
+     * chips, stat cards and the product table) is derived from this so the
+     * numbers always match the All / Male / Female view. Gender is matched
+     * strictly to the product's tag (unisex products show only under "All").
+     */
+    const scopedProducts = useMemo(() => {
+        if (genderFilter === 'all') return products;
+        return products.filter((p) => p.gender === genderFilter);
+    }, [products, genderFilter]);
+
     const categories = useMemo(() => {
         const set = new Set<string>();
         products.forEach((p) => set.add(p.category));
@@ -177,34 +193,38 @@ export default function InventoryManagementPage() {
      * Used for the quick-filter chip row at the top.
      */
     const variantBuckets = useMemo(() => {
-        const map = new Map<string, { variant: string; products: Set<string>; units: number; outProducts: Set<string> }>();
-        products.forEach((p) => {
+        const map = new Map<string, { variant: string; products: Set<string>; inStockProducts: Set<string>; units: number; outProducts: Set<string> }>();
+        scopedProducts.forEach((p) => {
             p.variants.forEach((v) => {
                 const key = v.name;
                 if (!map.has(key)) {
-                    map.set(key, { variant: key, products: new Set(), units: 0, outProducts: new Set() });
+                    map.set(key, { variant: key, products: new Set(), inStockProducts: new Set(), units: 0, outProducts: new Set() });
                 }
                 const bucket = map.get(key)!;
                 bucket.products.add(p.id);
                 bucket.units += v.quantity;
-                if (v.quantity <= 0) bucket.outProducts.add(p.id);
+                if (v.quantity > 0) bucket.inStockProducts.add(p.id);
+                else bucket.outProducts.add(p.id);
             });
         });
         return Array.from(map.values())
             .map((b) => ({
                 variant: b.variant,
                 products: b.products.size,
+                // Distinct products that actually have stock in this age — this
+                // is the number shown on the chip ("available products").
+                inStockProducts: b.inStockProducts.size,
                 units: b.units,
                 outOfStockProducts: b.outProducts.size,
             }))
             .sort((a, b) => variantLabelCompare(a.variant, b.variant));
-    }, [products]);
+    }, [scopedProducts]);
 
     // ─── Filtering ─────────────────────────────────────────────────────────
 
     const filteredProducts = useMemo(() => {
         const q = searchTerm.trim().toLowerCase();
-        return products.filter((p) => {
+        return scopedProducts.filter((p) => {
             const stock = effectiveStock(p);
             const status = classifyStock(stock);
 
@@ -230,7 +250,7 @@ export default function InventoryManagementPage() {
 
             return true;
         });
-    }, [products, searchTerm, categoryFilter, stockFilter, variantFilter, colorFilter]);
+    }, [scopedProducts, searchTerm, categoryFilter, stockFilter, variantFilter, colorFilter]);
 
     const stats = useMemo(() => {
         let totalUnits = 0;
@@ -241,7 +261,7 @@ export default function InventoryManagementPage() {
         let lowStockVariants = 0;
         let outOfStockVariants = 0;
 
-        products.forEach((p) => {
+        scopedProducts.forEach((p) => {
             const stock = effectiveStock(p);
             totalUnits += stock;
             totalRetailValue += stock * p.price;
@@ -257,7 +277,7 @@ export default function InventoryManagementPage() {
         });
 
         return {
-            totalProducts: products.length,
+            totalProducts: scopedProducts.length,
             totalVariantRows,
             totalUnits,
             totalRetailValue,
@@ -266,7 +286,7 @@ export default function InventoryManagementPage() {
             lowStockVariants,
             outOfStockVariants,
         };
-    }, [products]);
+    }, [scopedProducts]);
 
     function clearFilters() {
         setSearchTerm('');
@@ -274,6 +294,7 @@ export default function InventoryManagementPage() {
         setCategoryFilter('all');
         setColorFilter('all');
         setVariantFilter('all');
+        setGenderFilter('all');
     }
 
     function toggleExpand(productId: string) {
@@ -353,6 +374,7 @@ export default function InventoryManagementPage() {
         (categoryFilter !== 'all' ? 1 : 0) +
         (colorFilter !== 'all' ? 1 : 0) +
         (variantFilter !== 'all' ? 1 : 0) +
+        (genderFilter !== 'all' ? 1 : 0) +
         (searchTerm.trim() ? 1 : 0);
 
     return (
@@ -410,6 +432,43 @@ export default function InventoryManagementPage() {
                     />
                 </div>
 
+                {/* Audience (gender) toggle */}
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-6 flex flex-wrap items-center gap-3">
+                    <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                        <i className="ri-group-line text-gray-500" />
+                        Audience
+                    </p>
+                    <div className="flex items-center bg-gray-100 rounded-lg p-1">
+                        {([
+                            { id: 'all', label: 'All', icon: 'ri-apps-2-line' },
+                            { id: 'male', label: 'Male', icon: 'ri-men-line' },
+                            { id: 'female', label: 'Female', icon: 'ri-women-line' },
+                        ] as { id: GenderFilter; label: string; icon: string }[]).map((g) => (
+                            <button
+                                key={g.id}
+                                onClick={() => setGenderFilter(g.id)}
+                                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${
+                                    genderFilter === g.id
+                                        ? g.id === 'male'
+                                            ? 'bg-sky-600 text-white shadow-sm'
+                                            : g.id === 'female'
+                                                ? 'bg-pink-600 text-white shadow-sm'
+                                                : 'bg-white text-gray-900 shadow-sm'
+                                        : 'text-gray-600 hover:text-gray-900'
+                                }`}
+                            >
+                                <i className={g.icon} />
+                                {g.label}
+                            </button>
+                        ))}
+                    </div>
+                    <span className="text-xs text-gray-500">
+                        {genderFilter === 'all'
+                            ? 'Showing products for all audiences'
+                            : `Showing ${genderFilter} products only (unisex items appear under “All”)`}
+                    </span>
+                </div>
+
                 {/* Variant quick-filter chips */}
                 {variantBuckets.length > 0 && (
                     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-6">
@@ -440,7 +499,7 @@ export default function InventoryManagementPage() {
                             </button>
                             {variantBuckets.map((b) => {
                                 const active = variantFilter === b.variant;
-                                const allOut = b.units <= 0;
+                                const allOut = b.inStockProducts <= 0;
                                 return (
                                     <button
                                         key={b.variant}
@@ -452,7 +511,7 @@ export default function InventoryManagementPage() {
                                                   ? 'border-red-200 bg-red-50 text-red-700 hover:border-red-300'
                                                   : 'border-gray-200 bg-white text-gray-700 hover:border-gray-400'
                                         }`}
-                                        title={`${b.products} product${b.products === 1 ? '' : 's'} · ${b.units} unit${b.units === 1 ? '' : 's'} in stock`}
+                                        title={`${b.inStockProducts} product${b.inStockProducts === 1 ? '' : 's'} available in this age · ${b.units} unit${b.units === 1 ? '' : 's'} in stock`}
                                     >
                                         <span>{b.variant}</span>
                                         <span
@@ -464,7 +523,7 @@ export default function InventoryManagementPage() {
                                                       : 'bg-gray-100 text-gray-700'
                                             }`}
                                         >
-                                            {b.units}
+                                            {b.inStockProducts}
                                         </span>
                                     </button>
                                 );
@@ -553,7 +612,7 @@ export default function InventoryManagementPage() {
                         <div className="flex items-center gap-3 text-sm text-gray-600">
                             <span>
                                 Showing <span className="font-semibold text-gray-900">{filteredProducts.length}</span> of{' '}
-                                <span className="font-semibold text-gray-900">{products.length}</span> products
+                                <span className="font-semibold text-gray-900">{scopedProducts.length}</span> products
                             </span>
                             {activeFilterCount > 0 && (
                                 <button onClick={clearFilters} className="text-xs text-gray-700 hover:text-gray-900 underline">
