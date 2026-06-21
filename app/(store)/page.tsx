@@ -41,7 +41,7 @@ export default function Home() {
             .contains('metadata', { featured: true })
             .is('parent_id', null)
             .order('position', { ascending: true })
-            .limit(4),
+            .limit(7),
         ]);
 
         if (productsResult.error) throw productsResult.error;
