@@ -8,12 +8,12 @@ const siteUrl =
 export const metadata: Metadata = {
   title: 'Gallery | Freby\u2019s Fashion GH',
   description:
-    'Browse photos of our kids ready-to-wear Ankara dresses and studio creations from Freby\u2019s Fashion GH in Haatso, Accra.',
+    'Unique kids ready-to-wear outfits for all occasions from Freby\u2019s Fashion GH in Haatso, Accra.',
   alternates: { canonical: `${siteUrl}/gallery` },
   openGraph: {
     title: 'Gallery | Freby\u2019s Fashion GH',
     description:
-      'Photos of our latest kids Ankara outfits \u2014 handmade in Haatso, Accra with worldwide delivery.',
+      'Unique kids ready-to-wear outfits for all occasions \u2014 handmade in Haatso, Accra with worldwide delivery.',
     url: `${siteUrl}/gallery`,
     type: 'website',
   },

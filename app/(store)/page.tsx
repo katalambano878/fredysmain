@@ -68,10 +68,10 @@ export default function Home() {
   }, [heroSlides.length]);
 
   const heroHeadline =
-    getSetting('hero_headline') || 'Unique Kids Wear for All Occasions';
+    getSetting('hero_headline') || 'Unique Kids Ready-to-Wear Outfits for All Occasions';
   const heroSubheadline =
     getSetting('hero_subheadline') ||
-    'Freby’s Fashion GH brings kids ready-to-wear Ankara outfits that blend comfort, culture, and confidence for every special moment.';
+    'Freby’s Fashion GH brings unique kids ready-to-wear outfits for all occasions — blending comfort, culture, and confidence for every special moment.';
   const heroPrimaryText = getSetting('hero_primary_btn_text') || 'Shop Now';
   const heroPrimaryLink = getSetting('hero_primary_btn_link') || '/shop';
   const heroSecondaryText =
@@ -176,7 +176,7 @@ export default function Home() {
         <div className="absolute inset-0 bg-black/20" aria-hidden="true" />
         <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 md:py-20 text-center">
           <span className="inline-flex items-center rounded-full bg-white/15 border border-white/25 px-3 py-1 sm:px-4 sm:py-1.5 text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.2em] sm:tracking-[0.25em] text-white/95 mb-4 sm:mb-5">
-            Freby’s Fashion GH · Kids Ankara Collection
+            Freby’s Fashion GH · Kids Ready-to-Wear Collection
           </span>
           <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-[3.25rem] font-extrabold leading-tight text-white drop-shadow-sm max-w-3xl mx-auto">
             {heroHeadline}
@@ -204,7 +204,7 @@ export default function Home() {
               <span className="inline-flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-white/15">
                 <i className="ri-shield-check-line text-brand-greenLight text-sm sm:text-base" />
               </span>
-              <span className="font-medium">Quality Ankara fabrics</span>
+              <span className="font-medium">Quality fabrics</span>
             </div>
             <div className="inline-flex items-center gap-2">
               <span className="inline-flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-white/15">
@@ -382,8 +382,7 @@ export default function Home() {
               </h2>
             </div>
             <p className="text-sm text-brand-greenDark/85 max-w-md">
-              Discover new kids Ankara pieces for birthdays, celebrations,
-              church, school events, and everyday style.
+              Unique kids ready-to-wear outfits for all occasions.
             </p>
           </div>
 
@@ -453,7 +452,7 @@ export default function Home() {
               {
                 icon: 'ri-vip-crown-line',
                 title: 'Unique occasion-ready designs',
-                body: 'We curate standout Ankara outfits for birthdays, ceremonies, family photos, and festive events.',
+                body: 'Unique kids ready-to-wear outfits for all occasions.',
               },
               {
                 icon: 'ri-customer-service-2-line',
@@ -499,8 +498,7 @@ export default function Home() {
                 Dress your kids in style for every occasion.
               </h3>
               <p className="text-sm sm:text-base text-[#e6f5e8] max-w-md mx-auto md:mx-0">
-                Explore casual and luxury kids Ankara wear with comfort, quality
-                finishing, and worldwide delivery from Freby’s Fashion GH.
+                Unique kids ready-to-wear outfits for all occasions. Worldwide delivery from Freby’s Fashion GH.
               </p>
               <div className="pt-2 flex flex-wrap gap-3 justify-center md:justify-start">
                 <Link
@@ -524,7 +522,7 @@ export default function Home() {
                   Freby’s Fashion GH
                 </span>
                 <p className="text-lg sm:text-xl font-bold text-white leading-snug">
-                  Casual and luxury kids Ankara wear
+                  Unique kids ready-to-wear outfits for all occasions
                 </p>
                 <div className="space-y-1 text-sm text-[#eaf8ec]">
                   <p className="inline-flex items-center gap-2">

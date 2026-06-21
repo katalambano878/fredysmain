@@ -19,7 +19,7 @@ export const SITE_KNOWLEDGE: SiteKnowledgeEntry[] = [
     category: "company",
     content: `Freby’s Fashion GH is a kids ready-to-wear Ankara clothing brand.
 
-We create unique kids wear for all occasions with both casual and luxury options.
+Unique kids ready-to-wear outfits for all occasions, with both casual and luxury options.
 
 Location: Haatso, Accra, Ghana.
 Delivery: Worldwide delivery.`,

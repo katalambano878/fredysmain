@@ -23,8 +23,8 @@ const seoSiteUrl = (
 const defaultShareImage = `${seoSiteUrl}/frebys-logo.png`;
 
 export function generateMetadata({
-  title = "Kids Ready-to-Wear Ankara Clothes in Ghana",
-  description = "Shop unique casual and luxury kids Ankara wear for all occasions. Freby’s Fashion GH delivers worldwide from Haatso, Accra, Ghana.",
+  title = "Kids Ready-to-Wear Outfits for All Occasions",
+  description = "Unique kids ready-to-wear outfits for all occasions. Freby’s Fashion GH delivers worldwide from Haatso, Accra, Ghana.",
   keywords = [],
   ogImage = defaultShareImage,
   ogType = "website",

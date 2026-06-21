@@ -20,7 +20,7 @@ export default function FAQsPage() {
     {
       category: 'orders',
       question: 'How do I place an order?',
-      answer: "Browse our kids Ankara collections, add your selected outfits to cart, proceed to checkout, provide delivery details, choose payment, and confirm your order. You'll receive an order confirmation and updates."
+      answer: "Browse our kids ready-to-wear collections, add your selected outfits to cart, proceed to checkout, provide delivery details, choose payment, and confirm your order. You'll receive an order confirmation and updates."
     },
     {
       category: 'orders',

@@ -65,7 +65,7 @@ export async function POST(request: Request) {
           {
             role: 'system',
             content:
-              'You are a product copywriter for Freby’s Fashion GH, a kids ready-to-wear Ankara fashion brand in Ghana. ' +
+              'You are a product copywriter for Freby’s Fashion GH, a kids ready-to-wear fashion brand in Ghana offering unique outfits for all occasions. ' +
               'Write short, compelling product descriptions (2-3 sentences, max 300 characters). ' +
               'Be specific about what the product is and its key benefit. ' +
               'Use a warm, professional tone. Do not use hashtags or emojis. ' +

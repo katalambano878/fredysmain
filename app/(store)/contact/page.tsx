@@ -331,7 +331,7 @@ export default function ContactPage() {
           <div className="max-w-3xl mx-auto text-center">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">Visit Our Store</h2>
             <p className="text-gray-600 mb-6 leading-relaxed">
-              Prefer to shop in person? Visit our store in Haatso. We will help you choose the perfect Ankara outfit for every occasion.
+              Prefer to shop in person? Visit our store in Haatso. We will help you choose the perfect outfit for every occasion.
             </p>
             <div className="flex flex-wrap justify-center gap-4 text-gray-600">
               <div className="flex items-center gap-2">

@@ -339,7 +339,7 @@ const STORE_INFO: Record<string, string> = {
   returns: `We accept eligible returns within 30 days of delivery for unworn items in original condition. To start a return, use your account or ask me to create a support ticket. Refunds are processed after inspection.`,
   payment: `We support secure checkout options, including Mobile Money for eligible local orders. Available payment methods are shown at checkout.`,
   contact: `You can reach us through:\n- This chat (24/7)\n- Email: hello@frebysfashion.com\n- Phone/WhatsApp: 024 472 0197\n- Visit: Haatso, Accra, Ghana\n- Support ticket: I can create one for you right now`,
-  about: `Freby’s Fashion GH creates unique kids ready-to-wear Ankara clothes for all occasions. We offer casual and luxury kids wear with worldwide delivery from Haatso, Accra, Ghana.`,
+  about: `Freby’s Fashion GH offers unique kids ready-to-wear outfits for all occasions. We offer casual and luxury kids wear with worldwide delivery from Haatso, Accra, Ghana.`,
   delivery_times: `Delivery timelines vary by destination (Ghana and international). You will see estimated timing at checkout and in your order updates.`,
   hours: `Our online store is open 24/7. Customer support is available Monday-Saturday, 8 AM - 8 PM GMT.`,
 };

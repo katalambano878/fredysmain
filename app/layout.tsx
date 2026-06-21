@@ -34,11 +34,11 @@ export const metadata: Metadata = {
   category: "shopping",
   referrer: "origin-when-cross-origin",
   title: {
-    default: "Freby’s Fashion GH | Kids Ready-to-Wear Ankara Clothes",
+    default: "Freby’s Fashion GH | Kids Ready-to-Wear Outfits",
     template: "%s | Freby’s Fashion GH",
   },
   description:
-    "Freby’s Fashion GH creates unique kids ready-to-wear Ankara clothes for all occasions. Casual and luxury kids wear with worldwide delivery from Haatso, Accra, Ghana.",
+    "Freby’s Fashion GH creates unique kids ready-to-wear outfits for all occasions. Casual and luxury kids wear with worldwide delivery from Haatso, Accra, Ghana.",
   keywords: [
     "Freby’s Fashion GH",
     "kids Ankara clothes",
@@ -105,9 +105,9 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_GH",
     url: siteUrl,
-    title: "Freby’s Fashion GH | Kids Ready-to-Wear Ankara Clothes",
+    title: "Freby’s Fashion GH | Kids Ready-to-Wear Outfits",
     description:
-      "Unique kids wear for all occasions. Passion for kids fashion with casual and luxury Ankara styles. Worldwide delivery from Haatso, Accra, Ghana.",
+      "Unique kids ready-to-wear outfits for all occasions. Casual and luxury kids wear with worldwide delivery from Haatso, Accra, Ghana.",
     siteName: "Freby’s Fashion GH",
     images: [
       {
@@ -121,9 +121,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Freby’s Fashion GH | Kids Ready-to-Wear Ankara Clothes",
+    title: "Freby’s Fashion GH | Kids Ready-to-Wear Outfits",
     description:
-      "Unique casual and luxury kids Ankara wear with worldwide delivery from Ghana.",
+      "Unique kids ready-to-wear outfits for all occasions. Worldwide delivery from Ghana.",
     images: [shareImageUrl],
   },
   alternates: {
@@ -192,7 +192,7 @@ export default function RootLayout({
                   "url": siteUrl,
                   "logo": { "@type": "ImageObject", "url": `${siteUrl}/frebys-logo.png`, "width": 593, "height": 421 },
                   "image": shareImageUrl,
-                  "description": "Unique kids ready-to-wear Ankara clothes for all occasions. Casual and luxury kids wear handmade in Haatso, Accra with worldwide delivery.",
+                  "description": "Unique kids ready-to-wear outfits for all occasions. Casual and luxury kids wear handmade in Haatso, Accra with worldwide delivery.",
                   "foundingLocation": "Haatso, Accra, Ghana",
                   "knowsAbout": ["Kids fashion", "Ankara fabric", "African print clothing", "Children ready-to-wear", "Kids occasion outfits"],
                   "sameAs": ["https://wa.me/233244720197"],

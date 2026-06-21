@@ -33,7 +33,7 @@ export default function AboutPage() {
     {
       icon: 'ri-palette-line',
       title: 'Culture in every detail',
-      body: 'We celebrate vibrant Ankara heritage with fresh silhouettes kids can wear proudly.',
+      body: 'Unique kids ready-to-wear outfits for all occasions, designed with care.',
     },
     {
       icon: 'ri-earth-line',
@@ -51,7 +51,7 @@ export default function AboutPage() {
     {
       label: '02',
       title: 'Fabric and fit',
-      body: 'We select quality Ankara fabric and refine patterns to keep kids comfortable all day.',
+      body: 'We select quality fabric and refine patterns to keep kids comfortable all day.',
     },
     {
       label: '03',
@@ -73,7 +73,7 @@ export default function AboutPage() {
                 A different kind of kids fashion story.
               </h1>
               <p className="mt-5 text-base sm:text-lg text-gray-700 max-w-xl">
-                We build standout ready-to-wear Ankara outfits that feel joyful, practical, and premium for every family occasion.
+                Unique kids ready-to-wear outfits for all occasions — joyful, practical, and premium for every family moment.
               </p>
 
               <div className="mt-7 flex flex-wrap gap-3">
@@ -194,7 +194,7 @@ export default function AboutPage() {
               Dress your kids in culture, comfort, and confidence.
             </h2>
             <p className="mt-3 text-[#e6f5e8] max-w-2xl mx-auto">
-              Explore casual and luxury kids Ankara outfits made with care in Ghana and delivered worldwide.
+              Unique kids ready-to-wear outfits for all occasions.
             </p>
             <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
               <Link

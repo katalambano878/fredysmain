@@ -30,7 +30,7 @@ export default function Footer() {
     rawSiteName && !/deliz/i.test(rawSiteName) ? rawSiteName : "Freby’s Fashion GH";
   const siteTagline =
     getSetting("site_tagline") ||
-    "Unique kids ready-to-wear Ankara clothes for all occasions.";
+    "Unique kids ready-to-wear outfits for all occasions.";
   const contactEmail = getSetting('contact_email') || '';
   const contactPhone = getSetting("contact_phone") || "0244720197";
   const whatsappLink = `https://wa.me/233${contactPhone.replace(/^0/, "")}`;

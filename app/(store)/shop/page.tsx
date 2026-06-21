@@ -9,7 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { cachedQuery } from '@/lib/query-cache';
 
 function ShopContent() {
-  usePageTitle('Shop Kids Ankara Collections');
+  usePageTitle('Shop Kids Ready-to-Wear Outfits');
   const searchParams = useSearchParams();
 
   // State
@@ -195,11 +195,10 @@ function ShopContent() {
               Freby’s Fashion GH
             </span>
             <h1 className="mt-4 text-3xl sm:text-4xl md:text-5xl font-extrabold leading-tight">
-              Shop Kids Ankara Collections
+              Shop Kids Ready-to-Wear Outfits
             </h1>
             <p className="mt-4 text-sm sm:text-base text-white/90 max-w-2xl">
-              Explore casual and luxury kids ready-to-wear Ankara outfits curated for birthdays,
-              celebrations, church, school events, and everyday confidence.
+              Unique kids ready-to-wear outfits for all occasions.
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-3 text-xs sm:text-sm text-white/90">
               <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 border border-white/20">
@@ -431,7 +430,7 @@ function ShopContent() {
                         <i className="ri-inbox-line text-4xl text-brand-green"></i>
                       </div>
                       <h3 className="text-2xl font-bold text-brand-greenDark mb-2">No Products Found</h3>
-                      <p className="text-brand-greenDark/80 mb-8">Try adjusting your filters to discover more kids Ankara styles</p>
+                      <p className="text-brand-greenDark/80 mb-8">Try adjusting your filters to discover more unique kids outfits</p>
                       <button
                         onClick={() => {
                           setSelectedCategory('all');

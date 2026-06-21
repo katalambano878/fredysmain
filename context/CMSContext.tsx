@@ -64,7 +64,7 @@ interface CMSContextType {
 
 const defaultSettings: SiteSettings = {
     site_name: 'Freby’s Fashion GH',
-    site_tagline: 'Unique kids ready-to-wear Ankara clothes for all occasions.',
+    site_tagline: 'Unique kids ready-to-wear outfits for all occasions.',
     site_logo: '/frebys-logo.png',
     contact_email: 'hello@frebysfashion.com',
     contact_phone: '0244720197',
@@ -92,7 +92,7 @@ const CMSContext = createContext<CMSContextType>({
 export function CMSProvider({ children }: { children: ReactNode }) {
     const [settings, setSettings] = useState<SiteSettings>({
         site_name: 'Freby’s Fashion GH',
-        site_tagline: 'Unique kids ready-to-wear Ankara clothes for all occasions.',
+        site_tagline: 'Unique kids ready-to-wear outfits for all occasions.',
         site_logo: '/frebys-logo.png',
         contact_email: 'hello@frebysfashion.com',
         contact_phone: '0244720197',
