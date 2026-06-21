@@ -102,37 +102,55 @@ export default function Home() {
   const latestProducts = featuredProducts;
   const defaultCategoryStyles = [
     {
-      chip: 'Everyday comfort',
+      chip: 'Everyday style',
       icon: 'ri-shirt-line',
       color: 'from-brand-green to-brand-greenDark',
     },
     {
-      chip: 'Premium looks',
-      icon: 'ri-vip-crown-line',
+      chip: 'Sunday best',
+      icon: 'ri-building-4-line',
       color: 'from-sky-400 to-cyan-600',
     },
     {
-      chip: 'Event ready',
-      icon: 'ri-t-shirt-air-line',
+      chip: 'Special occasion',
+      icon: 'ri-heart-2-line',
       color: 'from-brand-orange to-brand-orangeDark',
     },
     {
-      chip: 'Just landed',
-      icon: 'ri-sparkling-line',
+      chip: 'Heritage',
+      icon: 'ri-ancient-gate-line',
+      color: 'from-amber-500 to-amber-700',
+    },
+    {
+      chip: 'Cultural pride',
+      icon: 'ri-earth-line',
+      color: 'from-purple-500 to-purple-700',
+    },
+    {
+      chip: 'Twin & match',
+      icon: 'ri-group-line',
+      color: 'from-teal-400 to-teal-600',
+    },
+    {
+      chip: 'Pre-order only',
+      icon: 'ri-time-line',
       color: 'from-slate-600 to-slate-900',
     },
   ];
   const fallbackCategories = [
-    { name: 'Casual Kids Wear', slug: 'casual-kids-wear', metadata: {} },
-    { name: 'Luxury Kids Wear', slug: 'luxury-kids-wear', metadata: {} },
-    { name: 'Occasion Outfits', slug: 'occasion-outfits', metadata: {} },
-    { name: 'New Arrivals', slug: 'new-arrivals', metadata: {} },
+    { name: 'Casual Wear', slug: 'casual-wear', metadata: {} },
+    { name: 'Church Wear', slug: 'church-wear', metadata: {} },
+    { name: 'Weddings / Special Outfits', slug: 'weddings-special-outfits', metadata: {} },
+    { name: 'Traditional Wear', slug: 'traditional-wear', metadata: {} },
+    { name: 'AU Collection / Cultural Wear', slug: 'au-collection-cultural-wear', metadata: {} },
+    { name: 'Matching Sets', slug: 'matching-sets', metadata: {} },
+    { name: 'Memorial Wear', slug: 'memorial-wear', metadata: {}, preorder: true },
   ];
   const vibeCategories = (featuredCategories.length > 0
     ? featuredCategories
     : fallbackCategories
   )
-    .slice(0, 4)
+    .slice(0, 7)
     .map((category, index) => {
       const style = defaultCategoryStyles[index % defaultCategoryStyles.length];
       return {
@@ -140,6 +158,7 @@ export default function Home() {
         chip: category.metadata?.chip || style.chip,
         icon: category.metadata?.icon || style.icon,
         color: category.metadata?.color || style.color,
+        preorder: (category as any).preorder || false,
       };
     });
 
@@ -231,7 +250,7 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
             <div>
               <p className="text-xs font-semibold tracking-[0.25em] text-brand-green uppercase">
-                Shop by vibe
+                Shop by category
               </p>
               <h2 className="mt-1 text-2xl font-bold text-gray-900">
                 Find the perfect kids outfit
@@ -246,7 +265,7 @@ export default function Home() {
             </Link>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {vibeCategories.map((item) => (
               <Link
                 key={item.slug}
@@ -264,6 +283,11 @@ export default function Home() {
                     <p className="text-sm font-semibold text-gray-900">
                       {item.name}
                     </p>
+                    {item.preorder && (
+                      <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                        <i className="ri-time-line text-[10px]" /> Pre-order basis only
+                      </span>
+                    )}
                   </div>
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm text-brand-greenDark group-hover:translate-y-[-2px] group-hover:shadow-md transition-all">
                     <i className={`${item.icon} text-lg`} />
