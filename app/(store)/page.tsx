@@ -101,41 +101,13 @@ export default function Home() {
   const popularProducts = featuredProducts.slice(0, 6);
   const latestProducts = featuredProducts;
   const defaultCategoryStyles = [
-    {
-      chip: 'Everyday style',
-      icon: 'ri-shirt-line',
-      color: 'from-brand-green to-brand-greenDark',
-    },
-    {
-      chip: 'Sunday best',
-      icon: 'ri-building-4-line',
-      color: 'from-sky-400 to-cyan-600',
-    },
-    {
-      chip: 'Special occasion',
-      icon: 'ri-heart-2-line',
-      color: 'from-brand-orange to-brand-orangeDark',
-    },
-    {
-      chip: 'Heritage',
-      icon: 'ri-ancient-gate-line',
-      color: 'from-amber-500 to-amber-700',
-    },
-    {
-      chip: 'Cultural pride',
-      icon: 'ri-earth-line',
-      color: 'from-purple-500 to-purple-700',
-    },
-    {
-      chip: 'Twin & match',
-      icon: 'ri-group-line',
-      color: 'from-teal-400 to-teal-600',
-    },
-    {
-      chip: 'Pre-order only',
-      icon: 'ri-time-line',
-      color: 'from-slate-600 to-slate-900',
-    },
+    { chip: 'Everyday comfort', icon: 'ri-shirt-line', color: 'from-brand-green to-brand-greenDark' },
+    { chip: 'Sunday best', icon: 'ri-building-4-line', color: 'from-sky-400 to-cyan-600' },
+    { chip: 'Special occasions', icon: 'ri-sparkling-line', color: 'from-brand-orange to-brand-orangeDark' },
+    { chip: 'Heritage style', icon: 'ri-palette-line', color: 'from-amber-500 to-amber-700' },
+    { chip: 'Cultural pride', icon: 'ri-earth-line', color: 'from-emerald-500 to-emerald-700' },
+    { chip: 'Coordinated looks', icon: 'ri-group-line', color: 'from-violet-500 to-violet-700' },
+    { chip: 'Pre-order only', icon: 'ri-time-line', color: 'from-slate-600 to-slate-900' },
   ];
   const fallbackCategories = [
     { name: 'Casual Wear', slug: 'casual-wear', metadata: {} },
@@ -144,7 +116,7 @@ export default function Home() {
     { name: 'Traditional Wear', slug: 'traditional-wear', metadata: {} },
     { name: 'AU Collection / Cultural Wear', slug: 'au-collection-cultural-wear', metadata: {} },
     { name: 'Matching Sets', slug: 'matching-sets', metadata: {} },
-    { name: 'Memorial Wear', slug: 'memorial-wear', metadata: {}, preorder: true },
+    { name: 'Memorial Wear', slug: 'memorial-wear', metadata: { preorder: true } },
   ];
   const vibeCategories = (featuredCategories.length > 0
     ? featuredCategories
@@ -158,7 +130,6 @@ export default function Home() {
         chip: category.metadata?.chip || style.chip,
         icon: category.metadata?.icon || style.icon,
         color: category.metadata?.color || style.color,
-        preorder: (category as any).preorder || false,
       };
     });
 
@@ -250,7 +221,7 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
             <div>
               <p className="text-xs font-semibold tracking-[0.25em] text-brand-green uppercase">
-                Shop by category
+                Shop by vibe
               </p>
               <h2 className="mt-1 text-2xl font-bold text-gray-900">
                 Find the perfect kids outfit
@@ -265,7 +236,7 @@ export default function Home() {
             </Link>
           </div>
 
-          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {vibeCategories.map((item) => (
               <Link
                 key={item.slug}
@@ -283,7 +254,7 @@ export default function Home() {
                     <p className="text-sm font-semibold text-gray-900">
                       {item.name}
                     </p>
-                    {item.preorder && (
+                    {item.metadata?.preorder && (
                       <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
                         <i className="ri-time-line text-[10px]" /> Pre-order basis only
                       </span>
