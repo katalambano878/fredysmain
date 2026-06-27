@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import PageHero from '@/components/PageHero';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useRecaptcha } from '@/hooks/useRecaptcha';
+import { HERO_IMAGES } from '@/lib/hero-images';
 
 export default function ContactPage() {
   usePageTitle('Contact Us');
@@ -148,6 +149,8 @@ export default function ContactPage() {
       <PageHero
         title={heroTitle}
         subtitle={heroSubtitle}
+        image={HERO_IMAGES.contact}
+        imagePosition="50% 25%"
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">

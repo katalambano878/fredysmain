@@ -4,6 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import PageHero from '@/components/PageHero';
+import { HERO_IMAGES } from '@/lib/hero-images';
 
 const categories = [
   {
@@ -114,55 +116,57 @@ export default function HelpCenterPage() {
     <>
       <Header />
       <main className="min-h-screen bg-gray-50">
-        <div className="bg-gradient-to-br from-gray-900 to-gray-900 text-white py-16">
-          <div className="max-w-4xl mx-auto px-4 text-center">
-            <h1 className="text-4xl font-bold mb-4">How can we help you?</h1>
-            <p className="text-gray-100 mb-8 text-lg">Search our help center or browse by category</p>
-            
-            <div className="relative max-w-2xl mx-auto">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search for articles..."
-                className="w-full px-6 py-4 pl-14 rounded-xl text-gray-900 text-lg focus:outline-none focus:ring-4 focus:ring-gray-300"
-              />
-              <i className="ri-search-line absolute left-5 top-1/2 -translate-y-1/2 text-2xl text-gray-400"></i>
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-5 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600"
-                >
-                  <i className="ri-close-line text-xl"></i>
-                </button>
-              )}
-            </div>
+        <PageHero
+          title="How can we help you?"
+          subtitle="Search our help center or browse by category"
+          image={HERO_IMAGES.help}
+          imagePosition="50% 30%"
+        />
 
-            {searchQuery && filteredArticles.length > 0 && (
-              <div className="mt-4 bg-white rounded-xl shadow-lg text-left max-w-2xl mx-auto max-h-96 overflow-y-auto">
-                {filteredArticles.map((article) => (
-                  <Link
-                    key={article.id}
-                    href={`/help/article/${article.id}`}
-                    className="block p-4 hover:bg-gray-50 border-b border-gray-200 last:border-0"
-                  >
-                    <p className="font-semibold text-gray-900">{article.title}</p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {article.category} • {article.views.toLocaleString()} views
-                    </p>
-                  </Link>
-                ))}
-              </div>
-            )}
-
-            {searchQuery && filteredArticles.length === 0 && (
-              <div className="mt-4 bg-white rounded-xl shadow-lg p-6 text-center max-w-2xl mx-auto">
-                <i className="ri-file-search-line text-4xl text-gray-400 mb-2"></i>
-                <p className="text-gray-900 font-semibold">No results found</p>
-                <p className="text-sm text-gray-600 mt-1">Try different keywords or browse categories below</p>
-              </div>
+        <div className="max-w-4xl mx-auto px-4 -mt-8 relative z-10 mb-8">
+          <div className="relative max-w-2xl mx-auto">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search for articles..."
+              className="w-full px-6 py-4 pl-14 rounded-xl text-gray-900 text-lg bg-white border border-gray-200 shadow-lg focus:outline-none focus:ring-4 focus:ring-brand-green/20"
+            />
+            <i className="ri-search-line absolute left-5 top-1/2 -translate-y-1/2 text-2xl text-gray-400"></i>
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-5 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600"
+              >
+                <i className="ri-close-line text-xl"></i>
+              </button>
             )}
           </div>
+
+          {searchQuery && filteredArticles.length > 0 && (
+            <div className="mt-4 bg-white rounded-xl shadow-lg text-left max-w-2xl mx-auto max-h-96 overflow-y-auto">
+              {filteredArticles.map((article) => (
+                <Link
+                  key={article.id}
+                  href={`/help/article/${article.id}`}
+                  className="block p-4 hover:bg-gray-50 border-b border-gray-200 last:border-0"
+                >
+                  <p className="font-semibold text-gray-900">{article.title}</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {article.category} • {article.views.toLocaleString()} views
+                  </p>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {searchQuery && filteredArticles.length === 0 && (
+            <div className="mt-4 bg-white rounded-xl shadow-lg p-6 text-center max-w-2xl mx-auto">
+              <i className="ri-file-search-line text-4xl text-gray-400 mb-2"></i>
+              <p className="text-gray-900 font-semibold">No results found</p>
+              <p className="text-sm text-gray-600 mt-1">Try different keywords or browse categories below</p>
+            </div>
+          )}
         </div>
 
         <div className="max-w-7xl mx-auto px-4 py-12">

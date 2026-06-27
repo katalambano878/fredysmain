@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import PageHero from '@/components/PageHero';
+import { HERO_IMAGES } from '@/lib/hero-images';
 
 export const revalidate = 0; // Ensure fresh data on every visit
 
@@ -45,6 +46,8 @@ export default async function CategoriesPage() {
       <PageHero
         title="Shop by Category"
         subtitle="Explore our curated collections and find exactly what you're looking for"
+        image={HERO_IMAGES.categories}
+        imagePosition="50% 20%"
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">

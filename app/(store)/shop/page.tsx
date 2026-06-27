@@ -7,6 +7,7 @@ import ProductCard, { type ColorVariant } from '@/components/ProductCard';
 import { getColorHex } from '@/components/ProductCard';
 import { supabase } from '@/lib/supabase';
 import { cachedQuery } from '@/lib/query-cache';
+import { HERO_IMAGES } from '@/lib/hero-images';
 
 function ShopContent() {
   usePageTitle('Shop Kids Ready-to-Wear Outfits');
@@ -203,9 +204,15 @@ function ShopContent() {
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-brand-greenLight/40 via-white to-white">
-      <section className="relative overflow-hidden border-b border-brand-green/25">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(42,181,42,0.35),transparent_45%),radial-gradient(circle_at_85%_10%,rgba(248,119,26,0.2),transparent_40%),linear-gradient(130deg,#1f8c1f,#2AB52A,#1F8C1F)]" />
-        <div className="absolute inset-0 bg-black/20" />
+      <section className="relative overflow-hidden border-b border-brand-green/25 min-h-[280px] md:min-h-[320px]">
+        <img
+          src={HERO_IMAGES.shop}
+          alt="Shop kids ready-to-wear outfits"
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ objectPosition: '50% 30%' }}
+        />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(42,181,42,0.45),transparent_45%),radial-gradient(circle_at_85%_10%,rgba(248,119,26,0.25),transparent_40%),linear-gradient(130deg,rgba(31,140,31,0.88),rgba(42,181,42,0.82),rgba(31,140,31,0.88))]" />
+        <div className="absolute inset-0 bg-black/25" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-16 md:py-20 text-white">
           <div className="max-w-3xl">
             <span className="inline-flex items-center rounded-full border border-white/30 bg-white/10 px-4 py-1.5 text-[11px] font-semibold tracking-[0.2em] uppercase">

@@ -8,6 +8,7 @@ import AdvancedCouponSystem from '@/components/AdvancedCouponSystem';
 import { useCart } from '@/context/CartContext';
 import PageHero from '@/components/PageHero';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import { HERO_IMAGES } from '@/lib/hero-images';
 
 export default function CartPage() {
   usePageTitle('Shopping Cart');
@@ -60,7 +61,7 @@ export default function CartPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <PageHero title="Shopping Cart" />
+      <PageHero title="Shopping Cart" image={HERO_IMAGES.cart} imagePosition="50% 40%" />
       <div className="py-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
         <CartCountdown />

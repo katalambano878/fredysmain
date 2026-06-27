@@ -4,19 +4,21 @@ interface PageHeroProps {
   title: string;
   subtitle?: string;
   image?: string;
+  imagePosition?: string;
 }
 
-export default function PageHero({ title, subtitle, image }: PageHeroProps) {
+export default function PageHero({ title, subtitle, image, imagePosition = '50% 35%' }: PageHeroProps) {
   return (
-    <div className="relative overflow-hidden bg-[#166d1f]">
+    <div className="relative overflow-hidden bg-[#166d1f] min-h-[280px] md:min-h-[320px]">
       {image ? (
         <>
           <img
             src={image}
             alt={title}
             className="absolute inset-0 h-full w-full object-cover"
+            style={{ objectPosition: imagePosition }}
           />
-          <div className="absolute inset-0 bg-[#166d1f]/75" />
+          <div className="absolute inset-0 bg-[#166d1f]/70" />
         </>
       ) : (
         <div className="absolute inset-0">

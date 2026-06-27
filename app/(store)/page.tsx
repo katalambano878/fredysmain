@@ -41,7 +41,7 @@ export default function Home() {
             .contains('metadata', { featured: true })
             .is('parent_id', null)
             .order('position', { ascending: true })
-            .limit(7),
+            .order('name', { ascending: true }),
         ]);
 
         if (productsResult.error) throw productsResult.error;
@@ -121,9 +121,7 @@ export default function Home() {
   const vibeCategories = (featuredCategories.length > 0
     ? featuredCategories
     : fallbackCategories
-  )
-    .slice(0, 7)
-    .map((category, index) => {
+  ).map((category, index) => {
       const style = defaultCategoryStyles[index % defaultCategoryStyles.length];
       return {
         ...category,

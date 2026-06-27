@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import PageHero from '@/components/PageHero';
+import { HERO_IMAGES } from '@/lib/hero-images';
 import { useWishlist } from '@/context/WishlistContext';
 import ProductCard from '@/components/ProductCard';
 import { usePageTitle } from '@/hooks/usePageTitle';
@@ -33,7 +34,7 @@ export default function WishlistPage() {
 
   return (
     <main className="min-h-screen bg-gray-50">
-      <PageHero title="My Wishlist" image="/wishlist.jpeg" />
+      <PageHero title="My Wishlist" image={HERO_IMAGES.wishlist} imagePosition="50% 35%" />
 
       <section className="py-8 bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
