@@ -14,6 +14,8 @@ export default function ProductsPage() {
   const [genderFilter, setGenderFilter] = useState<'all' | 'male' | 'female' | 'unisex'>('all');
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<any[]>([]);
@@ -130,6 +132,8 @@ export default function ProductsPage() {
       const g = product.gender || 'unisex';
       if (g !== genderFilter) return false;
     }
+    if (categoryFilter && product.category !== categoryFilter) return false;
+    if (statusFilter && product.status !== statusFilter) return false;
     if (stockFilter === 'out_of_stock') return (product.quantity ?? 0) === 0;
     if (stockFilter === 'low_stock') {
       const threshold = product.metadata?.low_stock_threshold ?? 5;
@@ -274,15 +278,23 @@ export default function ProductsPage() {
 
           {showFilters && (
             <div className="mt-4 p-4 bg-gray-50 rounded-lg grid md:grid-cols-4 gap-4">
-              <select className="px-3 py-2 pr-8 border-2 border-gray-300 rounded-lg text-sm cursor-pointer">
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="px-3 py-2 pr-8 border-2 border-gray-300 rounded-lg text-sm cursor-pointer"
+              >
                 <option value="">All Categories</option>
                 {categories.map((cat: any) => <option key={cat.name} value={cat.name}>{cat.name}</option>)}
               </select>
-              <select className="px-3 py-2 pr-8 border-2 border-gray-300 rounded-lg text-sm cursor-pointer">
-                <option>All Status</option>
-                <option>Active</option>
-                <option>Draft</option>
-                <option>Archived</option>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 pr-8 border-2 border-gray-300 rounded-lg text-sm cursor-pointer"
+              >
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="draft">Draft</option>
+                <option value="archived">Archived</option>
               </select>
             </div>
           )}
