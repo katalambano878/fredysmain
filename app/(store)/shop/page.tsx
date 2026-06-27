@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import ProductCard, { type ColorVariant } from '@/components/ProductCard';
@@ -17,6 +17,8 @@ function ShopContent() {
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([{ id: 'all', name: 'All Products', count: 0 }]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [totalProducts, setTotalProducts] = useState(0);
 
   // Filters
@@ -28,6 +30,7 @@ function ShopContent() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [page, setPage] = useState(1);
   const productsPerPage = 9;
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   const ageOptions = ['6 months', 'Age 1', 'Age 2', 'Age 3', 'Age 4', 'Age 5', 'Age 6', 'Age 7', 'Age 8', 'Age 9', 'Age 10', 'Age 11', 'Age 12'];
 
@@ -62,7 +65,11 @@ function ShopContent() {
   // Fetch Products
   useEffect(() => {
     async function fetchProducts() {
-      setLoading(true);
+      if (page === 1) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
       try {
         const search = searchParams.get('search');
 
@@ -139,6 +146,10 @@ function ShopContent() {
         if (error) throw error;
 
         if (data) {
+          const fetchSize = selectedAge ? 100 : productsPerPage;
+          // If the DB returned a full batch, assume there may be more to load
+          setHasMore(data.length === fetchSize);
+
           let filtered = data;
           if (selectedAge) {
             filtered = data.filter((p: any) => {
@@ -187,20 +198,39 @@ function ShopContent() {
               colorVariants,
             };
           });
-          setProducts(formattedProducts);
-          setTotalProducts(selectedAge ? formattedProducts.length : (count || 0));
+          setProducts(prev => (page === 1 ? formattedProducts : [...prev, ...formattedProducts]));
+          if (selectedAge) {
+            setTotalProducts(prev => (page === 1 ? formattedProducts.length : prev + formattedProducts.length));
+          } else {
+            setTotalProducts(count || 0);
+          }
         }
       } catch (err) {
         console.error('Error fetching products:', err);
       } finally {
         setLoading(false);
+        setLoadingMore(false);
       }
     }
 
     fetchProducts();
   }, [selectedCategory, selectedAge, priceRange, selectedRating, sortBy, page, searchParams, categories]);
 
-  const totalPages = Math.ceil(totalProducts / productsPerPage);
+  // Infinite scroll: load the next page when the sentinel scrolls into view
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
+          setPage(prev => prev + 1);
+        }
+      },
+      { rootMargin: '600px 0px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore]);
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-brand-greenLight/40 via-white to-white">
@@ -507,31 +537,30 @@ function ShopContent() {
                 </>
               )}
 
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="mt-16 flex justify-center">
-                  <div className="inline-flex items-center space-x-2 rounded-2xl border border-brand-green/20 bg-white px-3 py-2 shadow-sm">
-                    <button
-                      onClick={() => setPage(p => Math.max(1, p - 1))}
-                      disabled={page === 1}
-                      className="w-10 h-10 flex items-center justify-center border border-brand-green/30 rounded-lg hover:bg-brand-greenLight transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <i className="ri-arrow-left-s-line text-xl text-brand-greenDark"></i>
-                    </button>
+              {/* Infinite scroll loader / sentinel */}
+              {!loading && products.length > 0 && (
+                <>
+                  {loadingMore && (
+                    <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {[...Array(3)].map((_, i) => (
+                        <div key={i} className="rounded-2xl border border-brand-green/20 bg-white p-3">
+                          <div className="bg-brand-greenLight rounded-xl aspect-[4/5] animate-pulse"></div>
+                          <div className="mt-3 h-4 w-3/4 rounded bg-brand-green/20 animate-pulse"></div>
+                          <div className="mt-2 h-4 w-1/2 rounded bg-brand-green/20 animate-pulse"></div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-                    <span className="px-4 font-medium text-brand-greenDark">
-                      Page {page} of {totalPages}
-                    </span>
+                  {/* Sentinel element observed to trigger the next page load */}
+                  <div ref={loadMoreRef} className="h-px w-full" aria-hidden="true" />
 
-                    <button
-                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                      disabled={page === totalPages}
-                      className="w-10 h-10 flex items-center justify-center border border-brand-green/30 rounded-lg hover:bg-brand-greenLight transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <i className="ri-arrow-right-s-line text-xl text-brand-greenDark"></i>
-                    </button>
-                  </div>
-                </div>
+                  {!hasMore && (
+                    <p className="mt-12 text-center text-sm text-brand-greenDark/70">
+                      You’ve reached the end — that’s all {totalProducts} {totalProducts === 1 ? 'outfit' : 'outfits'}.
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </div>
