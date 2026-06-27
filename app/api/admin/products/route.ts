@@ -29,14 +29,14 @@ function getAccessToken(request: Request): string | null {
   return null;
 }
 
-async function requireAdmin(request: Request): Promise<NextResponse | null> {
+async function requireAdmin(request: Request): Promise<{ error: NextResponse } | { userId: string }> {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 });
+    return { error: NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 }) };
   }
   const token = getAccessToken(request);
-  if (!token) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (!token) return { error: NextResponse.json({ error: 'Not authenticated' }, { status: 401 }) };
   const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-  if (userError || !user) return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
+  if (userError || !user) return { error: NextResponse.json({ error: 'Invalid session' }, { status: 401 }) };
   const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select('role')
@@ -44,9 +44,9 @@ async function requireAdmin(request: Request): Promise<NextResponse | null> {
     .single();
   const role = profile?.role != null ? String(profile.role) : '';
   if (role !== 'admin' && role !== 'staff') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
-  return null;
+  return { userId: user.id };
 }
 
 const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/300?text=No+Image';
@@ -57,8 +57,8 @@ const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/300?text=No+Image';
  * Use this in the admin products list so images always load regardless of RLS.
  */
 export async function GET(request: Request) {
-  const err = await requireAdmin(request);
-  if (err) return err;
+  const auth = await requireAdmin(request);
+  if ('error' in auth) return auth.error;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -70,7 +70,8 @@ export async function GET(request: Request) {
         *,
         categories(name),
         product_variants(count),
-        product_images(url, position)
+        product_images(url, position),
+        created_by_profile:profiles!products_created_by_fkey(full_name)
       `);
 
     if (sortBy === 'newest') query = query.order('created_at', { ascending: false });
@@ -99,6 +100,7 @@ export async function GET(request: Request) {
         stock: p.quantity,
         sales: 0,
         rating: p.rating_avg || 0,
+        added_by: p.created_by_profile?.full_name || null,
       };
     });
 
@@ -114,12 +116,13 @@ export async function GET(request: Request) {
  * Handles duplicate slug by appending a numeric suffix.
  */
 export async function POST(request: Request) {
-  const err = await requireAdmin(request);
-  if (err) return err;
+  const auth = await requireAdmin(request);
+  if ('error' in auth) return auth.error;
 
   try {
     const body = await request.json();
     const { variants = [], cop, ...productData } = body;
+    productData.created_by = auth.userId;
 
     // Ensure slug is unique
     let slug: string = productData.slug || productData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');

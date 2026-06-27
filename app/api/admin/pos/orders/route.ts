@@ -25,14 +25,14 @@ function getAccessToken(request: Request): string | null {
   return null;
 }
 
-async function requireAdmin(request: Request): Promise<NextResponse | null> {
+async function requireAdminOrStaff(request: Request): Promise<{ error: NextResponse } | { userId: string }> {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 });
+    return { error: NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 }) };
   }
   const token = getAccessToken(request);
-  if (!token) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (!token) return { error: NextResponse.json({ error: 'Not authenticated' }, { status: 401 }) };
   const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-  if (userError || !user) return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
+  if (userError || !user) return { error: NextResponse.json({ error: 'Invalid session' }, { status: 401 }) };
   const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select('role')
@@ -40,9 +40,9 @@ async function requireAdmin(request: Request): Promise<NextResponse | null> {
     .single();
   const role = profile?.role != null ? String(profile.role) : '';
   if (role !== 'admin' && role !== 'staff') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
-  return null;
+  return { userId: user.id };
 }
 
 /**
@@ -50,8 +50,8 @@ async function requireAdmin(request: Request): Promise<NextResponse | null> {
  * Create a POS order (and items) using service role so RLS does not block walk-in (user_id: null).
  */
 export async function POST(request: Request) {
-  const err = await requireAdmin(request);
-  if (err) return err;
+  const auth = await requireAdminOrStaff(request);
+  if ('error' in auth) return auth.error;
 
   try {
     const body = await request.json();
@@ -97,6 +97,7 @@ export async function POST(request: Request) {
         shipping_address: shipping_address || {},
         billing_address: billing_address || {},
         metadata: metadata || {},
+        staff_id: auth.userId,
       })
       .select()
       .single();

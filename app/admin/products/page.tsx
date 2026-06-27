@@ -346,6 +346,7 @@ export default function ProductsPage() {
                   <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Price</th>
                   <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Stock</th>
                   <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Status</th>
+                  <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Added By</th>
                   <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
@@ -401,6 +402,9 @@ export default function ProductsPage() {
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap capitalize ${statusColors[product.status] || 'bg-gray-100 text-gray-600'}`}>
                         {product.status}
                       </span>
+                    </td>
+                    <td className="py-4 px-4 text-sm text-gray-700 whitespace-nowrap">
+                      {product.added_by || '—'}
                     </td>
                     <td className="py-4 px-4">
                       <div className="flex items-center space-x-2">
@@ -460,6 +464,7 @@ export default function ProductsPage() {
                 </div>
                 <div className="flex items-center justify-between text-sm text-gray-600 mb-3 pb-3 border-b border-gray-200">
                   <span>Stock: {product.stock}</span>
+                  {product.added_by && <span className="text-xs text-gray-400">By: {product.added_by}</span>}
                 </div>
                 <div className="flex items-center space-x-2">
                   <Link

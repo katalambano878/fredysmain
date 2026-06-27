@@ -19,6 +19,8 @@ interface Order {
   shipping_address?: any;
   metadata?: any;
   is_preorder?: boolean;
+  staff_id?: string | null;
+  staff?: { full_name: string } | null;
   profiles?: {
     full_name: string;
     email: string;
@@ -620,6 +622,7 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
                 <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Items</th>
                 <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Total</th>
                 <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Payment</th>
+                {isPosMode && <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Sold By</th>}
                 <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Status</th>
                 <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Actions</th>
               </tr>
@@ -627,14 +630,14 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-gray-500">
+                  <td colSpan={isPosMode ? 10 : 9} className="py-12 text-center text-gray-500">
                     <i className="ri-loader-4-line animate-spin text-3xl text-gray-900"></i>
                     <p className="mt-2">Loading {isPosMode ? 'sales' : 'orders'}…</p>
                   </td>
                 </tr>
               ) : filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-gray-500">
+                  <td colSpan={isPosMode ? 10 : 9} className="py-12 text-center text-gray-500">
                     <i className="ri-inbox-line text-4xl text-gray-300"></i>
                     <p className="mt-2">{emptyTitle}</p>
                     <p className="text-sm">{emptyHint}</p>
@@ -682,6 +685,11 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
                         )}
                       </div>
                     </td>
+                    {isPosMode && (
+                      <td className="py-4 px-4 text-sm text-gray-700 whitespace-nowrap">
+                        {order.staff?.full_name || '—'}
+                      </td>
+                    )}
                     <td className="py-4 px-4">
                       <div className="flex flex-col items-start gap-1">
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${statusColors[order.status] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>

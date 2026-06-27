@@ -44,6 +44,7 @@ async function requireAdmin(request: Request): Promise<NextResponse | null> {
 
 const ORDER_SELECT = `
   *,
+  staff:profiles!orders_staff_id_fkey(full_name),
   order_items (
     id,
     product_id,

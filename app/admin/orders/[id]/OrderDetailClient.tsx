@@ -350,6 +350,7 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
               <p><span className="font-semibold">Shipping Method:</span> {order?.shipping_method || 'Standard'}</p>
               <p><span className="font-semibold">Payment:</span> {order?.payment_method} ({order?.payment_status})</p>
               {trackingNumber && <p><span className="font-semibold">Tracking #:</span> {trackingNumber}</p>}
+              {order?.staff?.full_name && <p><span className="font-semibold">Sold By:</span> {order.staff.full_name}</p>}
             </div>
             <div className="text-right">
               <p>Subtotal: GH₵ {order?.subtotal?.toFixed(2)}</p>

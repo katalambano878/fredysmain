@@ -89,6 +89,8 @@ export async function GET(request: Request) {
         shipping_address,
         metadata,
         is_preorder,
+        staff_id,
+        staff:profiles!orders_staff_id_fkey(full_name),
         order_items (
           quantity,
           product_name,
