@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, FormEvent } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 
@@ -17,6 +17,48 @@ export default function LookbookGallery() {
   const [items, setItems] = useState<LookbookItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [lightbox, setLightbox] = useState<number | null>(null);
+
+  const [showPreorderForm, setShowPreorderForm] = useState(false);
+  const [preorderSubmitting, setPreorderSubmitting] = useState(false);
+  const [preorderSuccess, setPreorderSuccess] = useState(false);
+  const [preorderError, setPreorderError] = useState('');
+  const [formData, setFormData] = useState({ name: '', phone: '', email: '', size: '', notes: '' });
+
+  const resetPreorderState = useCallback(() => {
+    setShowPreorderForm(false);
+    setPreorderSuccess(false);
+    setPreorderError('');
+    setFormData({ name: '', phone: '', email: '', size: '', notes: '' });
+  }, []);
+
+  const handlePreorderSubmit = useCallback(async (e: FormEvent, item: LookbookItem) => {
+    e.preventDefault();
+    setPreorderSubmitting(true);
+    setPreorderError('');
+    try {
+      const res = await fetch('/api/storefront/gallery-preorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gallery_item_id: item.id,
+          gallery_title: item.title,
+          gallery_image_url: item.image_url,
+          customer_name: formData.name,
+          customer_phone: formData.phone,
+          customer_email: formData.email || undefined,
+          preferred_size: formData.size || undefined,
+          notes: formData.notes || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Something went wrong');
+      setPreorderSuccess(true);
+    } catch (err: any) {
+      setPreorderError(err.message || 'Failed to submit preorder');
+    } finally {
+      setPreorderSubmitting(false);
+    }
+  }, [formData]);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,7 +80,7 @@ export default function LookbookGallery() {
     };
   }, []);
 
-  const close = useCallback(() => setLightbox(null), []);
+  const close = useCallback(() => { setLightbox(null); resetPreorderState(); }, [resetPreorderState]);
 
   useEffect(() => {
     if (lightbox === null) return;
@@ -154,10 +196,10 @@ export default function LookbookGallery() {
             </button>
           )}
           <div
-            className="relative max-h-[85vh] max-w-5xl w-full"
+            className="relative max-h-[90vh] max-w-5xl w-full flex flex-col items-center"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="relative aspect-[3/4] max-h-[85vh] w-full mx-auto">
+            <div className="relative aspect-[3/4] max-h-[60vh] w-full mx-auto">
               <Image
                 src={items[lightbox].image_url}
                 alt={items[lightbox].title || 'Lookbook'}
@@ -167,16 +209,128 @@ export default function LookbookGallery() {
                 priority
               />
             </div>
-            {(items[lightbox].title || items[lightbox].caption) && (
-              <div className="mt-4 text-center text-white">
-                {items[lightbox].title ? (
-                  <p className="text-lg font-semibold">{items[lightbox].title}</p>
-                ) : null}
-                {items[lightbox].caption ? (
-                  <p className="mt-1 text-sm text-white/85">{items[lightbox].caption}</p>
-                ) : null}
-              </div>
-            )}
+
+            <div className="mt-4 text-center text-white w-full max-w-md mx-auto">
+              {items[lightbox].title && (
+                <p className="text-lg font-semibold">{items[lightbox].title}</p>
+              )}
+              {items[lightbox].caption && (
+                <p className="mt-1 text-sm text-white/85">{items[lightbox].caption}</p>
+              )}
+
+              {!showPreorderForm && !preorderSuccess && (
+                <button
+                  type="button"
+                  onClick={() => setShowPreorderForm(true)}
+                  className="mt-4 inline-flex items-center gap-2 rounded-full bg-brand-orange px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-orangeDark transition-colors shadow-lg"
+                >
+                  <i className="ri-shopping-bag-line" />
+                  Preorder This Design
+                </button>
+              )}
+
+              {preorderSuccess && (
+                <div className="mt-4 rounded-xl bg-green-600/90 backdrop-blur px-5 py-4 text-white">
+                  <i className="ri-check-double-line text-2xl mb-1 block" />
+                  <p className="font-semibold">Preorder submitted!</p>
+                  <p className="text-sm text-white/90 mt-1">
+                    We'll contact you shortly to discuss pricing and details.
+                  </p>
+                </div>
+              )}
+
+              {showPreorderForm && !preorderSuccess && (
+                <form
+                  onSubmit={(e) => handlePreorderSubmit(e, items[lightbox])}
+                  className="mt-4 rounded-xl bg-white/95 backdrop-blur p-5 text-left space-y-3"
+                >
+                  <p className="text-sm font-bold text-gray-900 text-center">
+                    Preorder &ldquo;{items[lightbox].title || 'This design'}&rdquo;
+                  </p>
+                  <p className="text-xs text-gray-500 text-center">
+                    Fill in your details and we'll reach out to discuss pricing and production.
+                  </p>
+
+                  {preorderError && (
+                    <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{preorderError}</p>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Your name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData(p => ({ ...p, name: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+                      placeholder="e.g. Akua Mensah"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Phone number *</label>
+                    <input
+                      type="tel"
+                      required
+                      value={formData.phone}
+                      onChange={(e) => setFormData(p => ({ ...p, phone: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+                      placeholder="e.g. 0244720197"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Email (optional)</label>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData(p => ({ ...p, email: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+                      placeholder="e.g. akua@email.com"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Preferred size / age</label>
+                    <input
+                      type="text"
+                      value={formData.size}
+                      onChange={(e) => setFormData(p => ({ ...p, size: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+                      placeholder="e.g. Age 3, Size M"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Notes (optional)</label>
+                    <textarea
+                      rows={2}
+                      value={formData.notes}
+                      onChange={(e) => setFormData(p => ({ ...p, notes: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 resize-none focus:ring-2 focus:ring-brand-orange focus:border-brand-orange"
+                      placeholder="e.g. I'd like it in blue fabric"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={resetPreorderState}
+                      className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={preorderSubmitting}
+                      className="flex-1 px-4 py-2.5 bg-brand-orange text-white rounded-lg text-sm font-semibold hover:bg-brand-orangeDark transition-colors disabled:opacity-60"
+                    >
+                      {preorderSubmitting ? 'Submitting...' : 'Submit Preorder'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
           </div>
         </div>
       )}

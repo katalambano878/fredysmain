@@ -221,6 +221,12 @@ export default function AdminLayout({
       permissionKey: 'orders'
     },
     {
+      title: 'Gallery Preorders',
+      icon: 'ri-image-line',
+      path: '/admin/gallery-preorders',
+      permissionKey: 'orders'
+    },
+    {
       title: 'POS System',
       icon: 'ri-store-3-line',
       path: '/admin/pos',
