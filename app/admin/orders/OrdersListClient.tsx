@@ -21,6 +21,8 @@ interface Order {
   is_preorder?: boolean;
   staff_id?: string | null;
   staff?: { full_name: string } | null;
+  packed_by?: string | null;
+  packer?: { full_name: string } | null;
   profiles?: {
     full_name: string;
     email: string;
@@ -623,6 +625,7 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
                 <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Total</th>
                 <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Payment</th>
                 {isPosMode && <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Sold By</th>}
+                {!isPosMode && <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Packed By</th>}
                 <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Status</th>
                 <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Actions</th>
               </tr>
@@ -630,14 +633,14 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={isPosMode ? 10 : 9} className="py-12 text-center text-gray-500">
+                  <td colSpan={10} className="py-12 text-center text-gray-500">
                     <i className="ri-loader-4-line animate-spin text-3xl text-gray-900"></i>
                     <p className="mt-2">Loading {isPosMode ? 'sales' : 'orders'}…</p>
                   </td>
                 </tr>
               ) : filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={isPosMode ? 10 : 9} className="py-12 text-center text-gray-500">
+                  <td colSpan={10} className="py-12 text-center text-gray-500">
                     <i className="ri-inbox-line text-4xl text-gray-300"></i>
                     <p className="mt-2">{emptyTitle}</p>
                     <p className="text-sm">{emptyHint}</p>
@@ -688,6 +691,18 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
                     {isPosMode && (
                       <td className="py-4 px-4 text-sm text-gray-700 whitespace-nowrap">
                         {order.staff?.full_name || '—'}
+                      </td>
+                    )}
+                    {!isPosMode && (
+                      <td className="py-4 px-4 text-sm whitespace-nowrap">
+                        {order.packer?.full_name ? (
+                          <span className="inline-flex items-center gap-1 text-green-700">
+                            <i className="ri-checkbox-circle-fill text-xs"></i>
+                            {order.packer.full_name}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
                       </td>
                     )}
                     <td className="py-4 px-4">

@@ -25,26 +25,27 @@ function getAccessToken(request: Request): string | null {
   return null;
 }
 
-async function requireAdmin(request: Request): Promise<NextResponse | null> {
+async function requireAdminOrStaff(request: Request): Promise<{ error: NextResponse } | { userId: string }> {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 });
+    return { error: NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 }) };
   }
   const token = getAccessToken(request);
-  if (!token) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (!token) return { error: NextResponse.json({ error: 'Not authenticated' }, { status: 401 }) };
   const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-  if (userError || !user) return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
+  if (userError || !user) return { error: NextResponse.json({ error: 'Invalid session' }, { status: 401 }) };
   const { data: profile } = await supabaseAdmin
     .from('profiles').select('role').eq('id', user.id).single();
   const role = profile?.role != null ? String(profile.role) : '';
   if (role !== 'admin' && role !== 'staff') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
-  return null;
+  return { userId: user.id };
 }
 
 const ORDER_SELECT = `
   *,
   staff:profiles!orders_staff_id_fkey(full_name),
+  packer:profiles!orders_packed_by_fkey(full_name),
   order_items (
     id,
     product_id,
@@ -66,8 +67,8 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const err = await requireAdmin(request);
-  if (err) return err;
+  const auth = await requireAdminOrStaff(request);
+  if ('error' in auth) return auth.error;
 
   const { id } = await params;
 
@@ -98,21 +99,37 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const err = await requireAdmin(request);
-  if (err) return err;
+  const auth = await requireAdminOrStaff(request);
+  if ('error' in auth) return auth.error;
 
   const { id } = await params;
 
   try {
     const body = await request.json();
-    const { status, notes, metadata } = body;
+    const { status, notes, metadata, mark_packed } = body;
+
+    const updatePayload: any = { status, notes, metadata };
+
+    if (mark_packed) {
+      updatePayload.packed_by = auth.userId;
+    }
 
     const { error } = await supabaseAdmin
       .from('orders')
-      .update({ status, notes, metadata })
+      .update(updatePayload)
       .eq('id', id);
 
     if (error) throw error;
+
+    if (mark_packed) {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('full_name')
+        .eq('id', auth.userId)
+        .single();
+      return NextResponse.json({ success: true, packed_by_name: profile?.full_name || null });
+    }
+
     return NextResponse.json({ success: true });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

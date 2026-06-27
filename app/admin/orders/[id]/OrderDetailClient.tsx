@@ -139,6 +139,7 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
   const [markingPaid, setMarkingPaid] = useState(false);
   const [reverifying, setReverifying] = useState(false);
   const [reverifyResult, setReverifyResult] = useState<string | null>(null);
+  const [markingPacked, setMarkingPacked] = useState(false);
 
   const handleReverifyPayment = async () => {
     if (!order) return;
@@ -182,6 +183,35 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
       alert('Failed to mark as paid');
     } finally {
       setMarkingPaid(false);
+    }
+  };
+
+  const handleMarkAsPacked = async () => {
+    if (!order) return;
+    setMarkingPacked(true);
+    try {
+      const res = await fetch(`/api/admin/orders/${order.id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: order.status,
+          notes: order.notes,
+          metadata: order.metadata,
+          mark_packed: true,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed');
+      setOrder((prev: any) => ({
+        ...prev,
+        packed_by: 'self',
+        packer: { full_name: json.packed_by_name || 'You' },
+      }));
+    } catch (err: any) {
+      alert(err.message || 'Failed to mark as packed');
+    } finally {
+      setMarkingPacked(false);
     }
   };
 
@@ -351,6 +381,7 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
               <p><span className="font-semibold">Payment:</span> {order?.payment_method} ({order?.payment_status})</p>
               {trackingNumber && <p><span className="font-semibold">Tracking #:</span> {trackingNumber}</p>}
               {order?.staff?.full_name && <p><span className="font-semibold">Sold By:</span> {order.staff.full_name}</p>}
+              {order?.packer?.full_name && <p><span className="font-semibold">Packed By:</span> {order.packer.full_name}</p>}
             </div>
             <div className="text-right">
               <p>Subtotal: GH₵ {order?.subtotal?.toFixed(2)}</p>
@@ -559,6 +590,41 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
               >
                 {statusUpdating ? 'Updating...' : 'Update Status'}
               </button>
+            </div>
+
+            {/* Packing / Fulfillment */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              <h2 className="text-lg font-bold text-gray-900 mb-4">Fulfillment</h2>
+              {order?.packer?.full_name ? (
+                <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+                  <i className="ri-checkbox-circle-fill text-green-600 text-xl"></i>
+                  <div>
+                    <p className="text-sm font-semibold text-green-800">Packed by {order.packer.full_name}</p>
+                    <p className="text-xs text-green-600">Order has been packed and is ready</p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm text-gray-600 mb-3">Mark this order as packed once you&apos;ve prepared it for shipping.</p>
+                  <button
+                    onClick={handleMarkAsPacked}
+                    disabled={markingPacked}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {markingPacked ? (
+                      <><i className="ri-loader-4-line animate-spin"></i> Marking...</>
+                    ) : (
+                      <><i className="ri-box-3-line"></i> Mark as Packed</>
+                    )}
+                  </button>
+                </div>
+              )}
+              {order?.staff?.full_name && (
+                <div className="mt-3 pt-3 border-t border-gray-200 flex items-center gap-2 text-sm text-gray-600">
+                  <i className="ri-user-line"></i>
+                  <span>Sold by <span className="font-medium text-gray-800">{order.staff.full_name}</span></span>
+                </div>
+              )}
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">

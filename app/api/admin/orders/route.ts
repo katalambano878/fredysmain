@@ -90,7 +90,9 @@ export async function GET(request: Request) {
         metadata,
         is_preorder,
         staff_id,
+        packed_by,
         staff:profiles!orders_staff_id_fkey(full_name),
+        packer:profiles!orders_packed_by_fkey(full_name),
         order_items (
           quantity,
           product_name,
