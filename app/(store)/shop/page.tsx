@@ -20,6 +20,7 @@ function ShopContent() {
 
   // Filters
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedAge, setSelectedAge] = useState('');
   const [priceRange, setPriceRange] = useState([0, 5000]);
   const [selectedRating, setSelectedRating] = useState(0);
   const [sortBy, setSortBy] = useState('popular');
@@ -27,14 +28,18 @@ function ShopContent() {
   const [page, setPage] = useState(1);
   const productsPerPage = 9;
 
+  const ageOptions = ['6 months', 'Age 1', 'Age 2', 'Age 3', 'Age 4', 'Age 5', 'Age 6', 'Age 7', 'Age 8', 'Age 9', 'Age 10', 'Age 11', 'Age 12'];
+
   // Initialize from URL params
   useEffect(() => {
     const category = searchParams.get('category');
     const sort = searchParams.get('sort');
     const search = searchParams.get('search');
+    const age = searchParams.get('age');
 
     if (category) setSelectedCategory(category);
     if (sort) setSortBy(sort);
+    if (age) setSelectedAge(age);
   }, [searchParams]);
 
   // Fetch Categories from cached API
@@ -60,7 +65,7 @@ function ShopContent() {
       try {
         const search = searchParams.get('search');
 
-        const cacheKey = `shop:${selectedCategory}:${search}:${priceRange.join('-')}:${selectedRating}:${sortBy}:${page}`;
+        const cacheKey = `shop:${selectedCategory}:${selectedAge}:${search}:${priceRange.join('-')}:${selectedRating}:${sortBy}:${page}`;
         const { data, count, error } = await cachedQuery<{ data: any; count: any; error: any }>(
           cacheKey,
           async () => {
@@ -70,7 +75,7 @@ function ShopContent() {
                 *,
                 categories!inner(name, slug),
                 product_images!product_id(url, position),
-                product_variants(id, name, price, quantity, option1, option2, image_url)
+                product_variants!left(id, name, price, quantity, option1, option2, image_url)
               `, { count: 'exact' })
               .order('position', { foreignTable: 'product_images', ascending: true });
 
@@ -120,8 +125,9 @@ function ShopContent() {
                 break;
             }
 
-            const from = (page - 1) * productsPerPage;
-            const to = from + productsPerPage - 1;
+            const fetchSize = selectedAge ? 100 : productsPerPage;
+            const from = (page - 1) * fetchSize;
+            const to = from + fetchSize - 1;
             query = query.range(from, to);
 
             return query as any;
@@ -132,7 +138,18 @@ function ShopContent() {
         if (error) throw error;
 
         if (data) {
-          const formattedProducts = data.map((p: any) => {
+          let filtered = data;
+          if (selectedAge) {
+            filtered = data.filter((p: any) => {
+              const variants = p.product_variants || [];
+              return variants.some((v: any) => {
+                const vName = (v.name || v.option1 || '').toLowerCase().trim();
+                const target = selectedAge.toLowerCase().trim();
+                return vName === target && (v.quantity || 0) > 0;
+              });
+            });
+          }
+          const formattedProducts = filtered.map((p: any) => {
             const variants = p.product_variants || [];
             const hasVariants = variants.length > 0;
             const minVariantPrice = hasVariants ? Math.min(...variants.map((v: any) => v.price || p.price)) : undefined;
@@ -170,7 +187,7 @@ function ShopContent() {
             };
           });
           setProducts(formattedProducts);
-          setTotalProducts(count || 0);
+          setTotalProducts(selectedAge ? formattedProducts.length : (count || 0));
         }
       } catch (err) {
         console.error('Error fetching products:', err);
@@ -180,7 +197,7 @@ function ShopContent() {
     }
 
     fetchProducts();
-  }, [selectedCategory, priceRange, selectedRating, sortBy, page, searchParams, categories]);
+  }, [selectedCategory, selectedAge, priceRange, selectedRating, sortBy, page, searchParams, categories]);
 
   const totalPages = Math.ceil(totalProducts / productsPerPage);
 
@@ -406,6 +423,41 @@ function ShopContent() {
                 </div>
               </div>
 
+              {/* Age Filter Chips */}
+              <div className="mb-6 rounded-2xl border border-brand-green/20 bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-3 mb-3">
+                  <i className="ri-user-heart-line text-lg text-brand-greenDark"></i>
+                  <h3 className="text-sm font-bold text-brand-greenDark tracking-wide">Shop by Age</h3>
+                  {selectedAge && (
+                    <button
+                      onClick={() => { setSelectedAge(''); setPage(1); }}
+                      className="ml-auto text-xs text-gray-500 hover:text-red-600 font-medium flex items-center gap-1"
+                    >
+                      <i className="ri-close-line"></i> Clear
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ageOptions.map(age => {
+                    const isActive = selectedAge === age;
+                    const label = age.replace('Age ', '');
+                    return (
+                      <button
+                        key={age}
+                        onClick={() => { setSelectedAge(isActive ? '' : age); setPage(1); }}
+                        className={`px-4 py-2 rounded-full text-sm font-semibold border-2 transition-all ${
+                          isActive
+                            ? 'border-brand-green bg-brand-green text-white shadow-sm'
+                            : 'border-brand-green/25 bg-brand-greenLight/40 text-brand-greenDark hover:border-brand-green hover:bg-brand-greenLight'
+                        }`}
+                      >
+                        {age === '6 months' ? '6m' : label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {loading ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {[...Array(6)].map((_, i) => (
@@ -434,6 +486,7 @@ function ShopContent() {
                       <button
                         onClick={() => {
                           setSelectedCategory('all');
+                          setSelectedAge('');
                           setPriceRange([0, 5000]);
                           setSelectedRating(0);
                           setPage(1);

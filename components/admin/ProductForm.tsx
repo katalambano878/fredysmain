@@ -1290,9 +1290,7 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                                     <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Variant image</th>
                                                     <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Price (GH₵)</th>
                                                     <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Stock</th>
-                                                    {selectedColors.length === 0 && (
-                                                        <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">Remove</th>
-                                                    )}
+                                                    <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">Remove</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -1382,18 +1380,23 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                                                     placeholder="0"
                                                                 />
                                                             </td>
-                                                            {selectedColors.length === 0 && (
-                                                                <td className="py-3 px-4 text-right">
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => toggleSize(combo.size)}
-                                                                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                                                                        title={`Delete ${combo.size} variant`}
-                                                                    >
-                                                                        <i className="ri-delete-bin-line text-lg"></i>
-                                                                    </button>
-                                                                </td>
-                                                            )}
+                                                            <td className="py-3 px-4 text-right">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        if (selectedColors.length > 0 && combo.color) {
+                                                                            toggleColor({ name: combo.color, hex: combo.colorHex });
+                                                                        }
+                                                                        if (combo.size) {
+                                                                            toggleSize(combo.size);
+                                                                        }
+                                                                    }}
+                                                                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                                                    title={`Remove ${[combo.color, combo.size].filter(Boolean).join(' / ')} variant`}
+                                                                >
+                                                                    <i className="ri-delete-bin-line text-lg"></i>
+                                                                </button>
+                                                            </td>
                                                         </tr>
                                                     );
                                                 })}
