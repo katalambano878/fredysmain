@@ -66,8 +66,9 @@ export default function AdminCategoriesPage() {
         const res = await fetch(`/api/admin/categories/${categoryId}`, { method: 'DELETE', credentials: 'include' });
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
-          setCategories(categories.filter(c => c.id !== categoryId));
-          alert('Category deleted successfully');
+          setCategories((prev) => prev.filter(c => c.id !== categoryId));
+          setSuccessMessage('Category deleted successfully');
+          setTimeout(() => setSuccessMessage(''), 3000);
         } else {
           alert(data.error || 'Error deleting category');
         }
@@ -109,6 +110,8 @@ export default function AdminCategoriesPage() {
     }
   };
 
+  const [successMessage, setSuccessMessage] = useState('');
+
   const handleSubmit = async () => {
     if (!formData.name || !formData.slug) {
       alert('Name and Slug are required');
@@ -122,7 +125,7 @@ export default function AdminCategoriesPage() {
         slug: formData.slug,
         description: formData.description,
         image_url: formData.image_url,
-        parent_id: formData.parent_id || null, // Handle empty string as null
+        parent_id: formData.parent_id || null,
         status: formData.status,
         metadata: {
           featured: formData.featured
@@ -130,25 +133,31 @@ export default function AdminCategoriesPage() {
       };
 
       if (showEditModal && editingCategory) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('categories')
           .update(payload)
-          .eq('id', editingCategory.id);
+          .eq('id', editingCategory.id)
+          .select()
+          .single();
         if (error) throw error;
-        alert('Category updated');
+        setCategories((prev) => prev.map((c) => (c.id === editingCategory.id ? { ...c, ...data } : c)));
+        setSuccessMessage('Category updated successfully');
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('categories')
-          .insert([payload]);
+          .insert([payload])
+          .select()
+          .single();
         if (error) throw error;
-        alert('Category created');
+        setCategories((prev) => [data, ...prev]);
+        setSuccessMessage('Category created successfully');
       }
 
       setShowAddModal(false);
       setShowEditModal(false);
       setEditingCategory(null);
       setFormData({ name: '', slug: '', description: '', image_url: '', parent_id: '', featured: false, status: 'active' });
-      fetchCategories();
+      setTimeout(() => setSuccessMessage(''), 3000);
 
     } catch (err: any) {
       console.error(err);
@@ -171,6 +180,13 @@ export default function AdminCategoriesPage() {
 
   return (
     <div className="space-y-6">
+      {successMessage && (
+        <div className="flex items-center gap-2 bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl text-sm font-medium animate-in fade-in">
+          <i className="ri-check-double-line text-lg" />
+          {successMessage}
+          <button onClick={() => setSuccessMessage('')} className="ml-auto text-green-600 hover:text-green-800"><i className="ri-close-line" /></button>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Categories</h1>
