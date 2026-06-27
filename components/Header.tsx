@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import MiniCart from './MiniCart';
@@ -56,6 +56,11 @@ export default function Header() {
   const [user, setUser] = useState<any>(null);
   const [isScrolled, setIsScrolled] = useState(false);
 
+  const [headerSuggestions, setHeaderSuggestions] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const headerSearchRef = useRef<HTMLDivElement>(null);
+  const headerDebounce = useRef<NodeJS.Timeout | null>(null);
+
   const { cartCount, isCartOpen, setIsCartOpen } = useCart();
   const { getSetting } = useCMS();
 
@@ -96,9 +101,34 @@ export default function Header() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (headerSearchRef.current && !headerSearchRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (headerDebounce.current) clearTimeout(headerDebounce.current);
+    if (searchQuery.trim().length < 2) { setHeaderSuggestions([]); return; }
+    headerDebounce.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/storefront/search?q=${encodeURIComponent(searchQuery.trim())}`);
+        const json = await res.json();
+        setHeaderSuggestions(json.products || []);
+        setShowSuggestions(true);
+      } catch { setHeaderSuggestions([]); }
+    }, 300);
+    return () => { if (headerDebounce.current) clearTimeout(headerDebounce.current); };
+  }, [searchQuery]);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
+      setShowSuggestions(false);
       window.location.href = `/shop?search=${encodeURIComponent(searchQuery)}`;
     }
   };
@@ -164,7 +194,7 @@ export default function Header() {
                 </button>
 
                 {/* Desktop Search Input */}
-                <div className="hidden lg:block relative group">
+                <div ref={headerSearchRef} className="hidden lg:block relative group">
                   <input
                     type="search"
                     placeholder="Search kids styles..."
@@ -172,9 +202,41 @@ export default function Header() {
                     aria-label="Search products"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    onFocus={() => { if (headerSuggestions.length > 0) setShowSuggestions(true); }}
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch(e)}
                   />
                   <i className="ri-search-line absolute left-4 top-1/2 -translate-y-1/2 text-brand-greenDark/70 group-focus-within:text-brand-greenDark transition-colors text-lg"></i>
+
+                  {showSuggestions && headerSuggestions.length > 0 && (
+                    <div className="absolute top-full mt-2 right-0 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 max-h-96 overflow-y-auto z-50">
+                      <p className="text-xs font-semibold text-gray-500 px-4 pt-3 pb-1">Products</p>
+                      {headerSuggestions.map((p: any) => (
+                        <Link
+                          key={p.id}
+                          href={`/product/${p.slug}`}
+                          onClick={() => setShowSuggestions(false)}
+                          className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors"
+                        >
+                          {p.image ? (
+                            <img src={p.image} alt={p.name} className="w-10 h-10 rounded-lg object-cover object-top" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center"><i className="ri-image-line text-gray-300"></i></div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
+                            <p className="text-xs text-gray-500">{p.category}</p>
+                          </div>
+                          <p className="text-sm font-bold text-gray-900 whitespace-nowrap">GH₵ {p.price?.toFixed(2)}</p>
+                        </Link>
+                      ))}
+                      <button
+                        onClick={(e) => handleSearch(e)}
+                        className="w-full text-center py-2.5 text-sm font-medium text-brand-greenDark hover:bg-gray-50 border-t border-gray-100 transition-colors"
+                      >
+                        View all results →
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Wishlist */}
