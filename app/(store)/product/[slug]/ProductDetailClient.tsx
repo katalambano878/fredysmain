@@ -280,10 +280,10 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   });
 
   const breadcrumbSchema = generateBreadcrumbSchema([
-    { name: 'Home', url: 'https://frebysfashion.com' },
-    { name: 'Shop', url: 'https://frebysfashion.com/shop' },
-    { name: product.category, url: `https://frebysfashion.com/shop?category=${product.category.toLowerCase().replace(/\s+/g, '-')}` },
-    { name: product.name, url: `https://frebysfashion.com/product/${slug}` }
+    { name: 'Home', url: 'https://www.frebysfashion.com' },
+    { name: 'Shop', url: 'https://www.frebysfashion.com/shop' },
+    { name: product.category, url: `https://www.frebysfashion.com/shop?category=${product.category.toLowerCase().replace(/\s+/g, '-')}` },
+    { name: product.name, url: `https://www.frebysfashion.com/product/${slug}` }
   ]);
 
   return (

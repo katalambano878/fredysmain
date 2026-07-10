@@ -1,12 +1,4 @@
 {
-  "redirects": [
-    {
-      "source": "/:path*",
-      "has": [{ "type": "host", "value": "www.frebysfashion.com" }],
-      "destination": "https://frebysfashion.com/:path*",
-      "permanent": true
-    }
-  ],
   "crons": [
     {
       "path": "/api/cron/payment-reminders",

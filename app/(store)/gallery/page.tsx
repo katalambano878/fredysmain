@@ -4,7 +4,7 @@ import LookbookGallery from '@/components/LookbookGallery';
 import { HERO_IMAGES } from '@/lib/hero-images';
 
 const siteUrl =
-  process.env.NEXT_PUBLIC_APP_URL || 'https://frebysfashion.com';
+  process.env.NEXT_PUBLIC_APP_URL || 'https://www.frebysfashion.com';
 
 export const metadata: Metadata = {
   title: 'Gallery | Freby\u2019s Fashion GH',

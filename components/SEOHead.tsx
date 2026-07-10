@@ -18,7 +18,7 @@ interface SEOProps {
 const seoSiteUrl = (
   process.env.NEXT_PUBLIC_APP_URL ||
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
-  "https://frebysfashion.com"
+  "https://www.frebysfashion.com"
 ).replace(/\/+$/, "");
 const defaultShareImage = `${seoSiteUrl}/frebys-logo.png`;
 

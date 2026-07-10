@@ -22,7 +22,7 @@ const inter = Inter({
 const siteUrl = (
   process.env.NEXT_PUBLIC_APP_URL ||
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
-  "https://frebysfashion.com"
+  "https://www.frebysfashion.com"
 ).replace(/\/+$/, "");
 
 /** WhatsApp / Facebook / iMessage read og:image — use absolute URL + explicit meta tags below. */

@@ -71,6 +71,16 @@
   }
 }
 
+/* Homepage "Just Landed" infinite horizontal marquee */
+@keyframes just-landed-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
 /* Float animation for decorative elements */
 @keyframes float {
   0%, 100% { transform: translateY(0px); }
@@ -119,6 +129,18 @@
 
 .animate-pulse-glow {
   animation: pulseGlow 2s ease-in-out infinite;
+}
+
+.animate-just-landed-scroll {
+  width: max-content;
+  animation: just-landed-scroll 35s linear infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-just-landed-scroll {
+    animation: none;
+  }
 }
 
 /* Staggered delays for lists */

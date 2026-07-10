@@ -5,4 +5,4 @@ Disallow: /account/
 Disallow: /checkout/
 Disallow: /api/
 
-Sitemap: https://frebysfashion.com/sitemap.xml
+Sitemap: https://www.frebysfashion.com/sitemap.xml
