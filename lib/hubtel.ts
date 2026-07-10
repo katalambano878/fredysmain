@@ -3,10 +3,11 @@
  *
  *  - POST https://payproxyapi.hubtel.com/items/initiate
  *      starts a hosted-checkout session.
- *  - GET  https://rmsc.hubtel.com/v1/merchantaccount/merchants/{merchant}/transactions/status?clientReference=...
- *      looks up a transaction by client reference. This is the public RMSC
- *      status-check endpoint (no IP whitelisting required), which is what
- *      our callback handler and /verify route use to confirm payments.
+ *  - GET  https://rmsc.hubtel.com/v1/merchantaccount/merchants/{merchantId}/transactions/status?clientReference={ref}
+ *      Public RMSC status-check (no IP whitelist). Same shape as Hubtel's doc cURL:
+ *      curl 'https://rmsc.hubtel.com/v1/merchantaccount/merchants/{merchantId}/transactions/status?clientReference=...'
+ *        -H 'Authorization: Basic {base64(apiId:apiKey)}'
+ *      Use HUBTEL_MERCHANT_ACCOUNT_NUMBER as {merchantId} (Frebys: 2039884).
  *
  * Auth on both endpoints is HTTP Basic with the Hubtel-issued API ID/Key.
  */
@@ -107,13 +108,14 @@ export async function checkHubtelStatus(
     clientReference: string,
 ): Promise<HubtelStatusResult> {
     const merchant = requiredEnv('HUBTEL_MERCHANT_ACCOUNT_NUMBER');
-    const url = `${STATUS_BASE_URL}/${encodeURIComponent(merchant)}/transactions/status?clientReference=${encodeURIComponent(clientReference)}`;
+    const url = `${STATUS_BASE_URL}/${merchant}/transactions/status?clientReference=${encodeURIComponent(clientReference)}`;
     const res = await fetch(url, {
         method: 'GET',
         headers: {
             Accept: 'application/json',
             Authorization: buildAuthHeader(),
         },
+        cache: 'no-store',
     });
     const raw = await parseJsonOrThrow<any>(res, 'status');
     return normalizeStatusResponse(raw);
