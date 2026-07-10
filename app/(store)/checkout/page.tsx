@@ -57,7 +57,8 @@ export default function CheckoutPage() {
   const availableCities = shippingData.region ? regionCities[shippingData.region] || [] : [];
 
   const [deliveryMethod, setDeliveryMethod] = useState('pickup');
-  const [paymentMethod, setPaymentMethod] = useState('moolre');
+  const hubtelEnabled = process.env.NEXT_PUBLIC_ENABLE_HUBTEL === 'true';
+  const [paymentMethod, setPaymentMethod] = useState(hubtelEnabled ? 'hubtel' : 'moolre');
   const [errors, setErrors] = useState<any>({});
 
 
@@ -251,9 +252,12 @@ export default function CheckoutPage() {
       const order = createResult.order;
 
       // 3. Handle Payment Redirects or Completion
-      if (paymentMethod === 'moolre') {
+      if (paymentMethod === 'hubtel' || paymentMethod === 'moolre') {
         try {
-          const paymentRes = await fetch('/api/payment/moolre', {
+          const endpoint =
+            paymentMethod === 'hubtel' ? '/api/payment/hubtel' : '/api/payment/moolre';
+
+          const paymentRes = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -598,6 +602,48 @@ export default function CheckoutPage() {
                     </label>
                   </div>
 
+                  {hubtelEnabled && (
+                    <div className="mt-8 pt-6 border-t border-gray-200">
+                      <h3 className="text-lg font-bold text-gray-900 mb-2">Payment Method</h3>
+                      <p className="text-sm text-gray-600 mb-4">Choose how you&apos;d like to pay.</p>
+                      <div className="space-y-3">
+                        <label className={`flex items-start justify-between gap-3 p-4 border-2 rounded-lg cursor-pointer transition-colors ${paymentMethod === 'hubtel' ? 'border-emerald-700 bg-emerald-50' : 'border-gray-300 hover:border-gray-400'}`}>
+                          <div className="flex items-start gap-3 flex-1">
+                            <input
+                              type="radio"
+                              name="paymentMethod"
+                              value="hubtel"
+                              checked={paymentMethod === 'hubtel'}
+                              onChange={() => setPaymentMethod('hubtel')}
+                              className="w-5 h-5 text-emerald-700 mt-0.5"
+                            />
+                            <div>
+                              <p className="font-semibold text-gray-900">Mobile Money</p>
+                              <p className="text-sm text-gray-600">Pay with MTN, Telecel or AirtelTigo Mobile Money. Powered by Hubtel.</p>
+                            </div>
+                          </div>
+                        </label>
+
+                        <label className={`flex items-start justify-between gap-3 p-4 border-2 rounded-lg cursor-pointer transition-colors ${paymentMethod === 'moolre' ? 'border-emerald-700 bg-emerald-50' : 'border-gray-300 hover:border-gray-400'}`}>
+                          <div className="flex items-start gap-3 flex-1">
+                            <input
+                              type="radio"
+                              name="paymentMethod"
+                              value="moolre"
+                              checked={paymentMethod === 'moolre'}
+                              onChange={() => setPaymentMethod('moolre')}
+                              className="w-5 h-5 text-emerald-700 mt-0.5"
+                            />
+                            <div>
+                              <p className="font-semibold text-gray-900">Mobile Money 2</p>
+                              <p className="text-sm text-gray-600">Backup Mobile Money gateway powered by Moolre.</p>
+                            </div>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex flex-col-reverse md:flex-row gap-4 mt-6">
                     <button
                       onClick={() => setCurrentStep(1)}
@@ -619,8 +665,10 @@ export default function CheckoutPage() {
                           </svg>
                           Processing...
                         </>
-                      ) : (
+                      ) : paymentMethod === 'hubtel' ? (
                         'Pay with Mobile Money'
+                      ) : (
+                        'Pay with Mobile Money 2'
                       )}
                     </button>
                   </div>

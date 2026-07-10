@@ -16,6 +16,10 @@ export default function PaymentPage() {
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [outOfStockItems, setOutOfStockItems] = useState<string[]>([]);
+  const hubtelEnabled = process.env.NEXT_PUBLIC_ENABLE_HUBTEL === 'true';
+  const [paymentMethod, setPaymentMethod] = useState<'hubtel' | 'moolre'>(
+    hubtelEnabled ? 'hubtel' : 'moolre',
+  );
 
   useEffect(() => {
     async function fetchOrder() {
@@ -30,6 +34,10 @@ export default function PaymentPage() {
         }
 
         setOrder(data.order);
+
+        const stored = data.order?.metadata?.payment_method;
+        if (stored === 'hubtel' && hubtelEnabled) setPaymentMethod('hubtel');
+        else if (stored === 'moolre') setPaymentMethod('moolre');
 
         // If already paid, redirect to success page
         if (data.order.payment_status === 'paid') {
@@ -69,7 +77,10 @@ export default function PaymentPage() {
         return;
       }
 
-      const paymentRes = await fetch('/api/payment/moolre', {
+      const endpoint =
+        paymentMethod === 'hubtel' ? '/api/payment/hubtel' : '/api/payment/moolre';
+
+      const paymentRes = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -247,6 +258,42 @@ export default function PaymentPage() {
           </div>
         )}
 
+        {hubtelEnabled && !hasStockIssue && (
+          <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-3">Payment Method</h2>
+            <div className="space-y-3">
+              <label className={`flex items-start gap-3 p-3 border-2 rounded-lg cursor-pointer transition-colors ${paymentMethod === 'hubtel' ? 'border-emerald-700 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                <input
+                  type="radio"
+                  name="payMethod"
+                  value="hubtel"
+                  checked={paymentMethod === 'hubtel'}
+                  onChange={() => setPaymentMethod('hubtel')}
+                  className="w-5 h-5 text-emerald-700 mt-0.5"
+                />
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">Mobile Money</p>
+                  <p className="text-xs text-gray-600">MTN, Telecel or AirtelTigo via Hubtel</p>
+                </div>
+              </label>
+              <label className={`flex items-start gap-3 p-3 border-2 rounded-lg cursor-pointer transition-colors ${paymentMethod === 'moolre' ? 'border-emerald-700 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                <input
+                  type="radio"
+                  name="payMethod"
+                  value="moolre"
+                  checked={paymentMethod === 'moolre'}
+                  onChange={() => setPaymentMethod('moolre')}
+                  className="w-5 h-5 text-emerald-700 mt-0.5"
+                />
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">Mobile Money 2</p>
+                  <p className="text-xs text-gray-600">Backup gateway via Moolre</p>
+                </div>
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* Pay Button — disabled when out of stock */}
         {!hasStockIssue ? (
           <button
@@ -265,7 +312,7 @@ export default function PaymentPage() {
             ) : (
               <>
                 <i className="ri-secure-payment-line mr-2"></i>
-                Pay GH₵ {order?.total?.toFixed(2)} with Mobile Money
+                Pay GH₵ {order?.total?.toFixed(2)} with {paymentMethod === 'hubtel' ? 'Hubtel' : 'Moolre'}
               </>
             )}
           </button>
@@ -291,7 +338,7 @@ export default function PaymentPage() {
         <div className="mt-6 text-center">
           <p className="text-xs text-gray-500 flex items-center justify-center">
             <i className="ri-lock-line mr-1"></i>
-            Secure payment powered by Moolre
+            Secure payment powered by {paymentMethod === 'hubtel' ? 'Hubtel' : 'Moolre'}
           </p>
         </div>
 

@@ -61,11 +61,22 @@ function OrderSuccessContent() {
       return;
     }
 
+    const gateway =
+      initialOrder?.metadata?.payment_gateway ||
+      initialOrder?.metadata?.payment_method ||
+      'moolre';
+    const verifyEndpoint =
+      gateway === 'hubtel' ? '/api/payment/hubtel/verify' : '/api/payment/moolre/verify';
+    const externalRef = initialOrder?.metadata?.hubtel_client_reference;
+
     try {
-      const res = await fetch('/api/payment/moolre/verify', {
+      const res = await fetch(verifyEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderNumber: orderNum })
+        body: JSON.stringify({
+          orderNumber: orderNum,
+          ...(externalRef ? { externalRef } : {}),
+        })
       });
       
       const result = await res.json();
