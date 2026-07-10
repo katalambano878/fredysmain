@@ -35,8 +35,9 @@ export default function PaymentPage() {
 
         setOrder(data.order);
 
+        // Hubtel is the primary gateway; only fall back to Moolre when Hubtel is disabled
         const stored = data.order?.metadata?.payment_method;
-        if (stored === 'hubtel' && hubtelEnabled) setPaymentMethod('hubtel');
+        if (hubtelEnabled) setPaymentMethod('hubtel');
         else if (stored === 'moolre') setPaymentMethod('moolre');
 
         // If already paid, redirect to success page
@@ -276,6 +277,7 @@ export default function PaymentPage() {
                   <p className="text-xs text-gray-600">MTN, Telecel or AirtelTigo via Hubtel</p>
                 </div>
               </label>
+              {/* Mobile Money 2 (Moolre backup gateway) — disabled, Hubtel is primary
               <label className={`flex items-start gap-3 p-3 border-2 rounded-lg cursor-pointer transition-colors ${paymentMethod === 'moolre' ? 'border-emerald-700 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}>
                 <input
                   type="radio"
@@ -290,6 +292,7 @@ export default function PaymentPage() {
                   <p className="text-xs text-gray-600">Backup gateway via Moolre</p>
                 </div>
               </label>
+              */}
             </div>
           </div>
         )}

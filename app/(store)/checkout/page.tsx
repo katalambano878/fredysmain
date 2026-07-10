@@ -624,6 +624,7 @@ export default function CheckoutPage() {
                           </div>
                         </label>
 
+                        {/* Mobile Money 2 (Moolre backup gateway) — disabled, Hubtel is primary
                         <label className={`flex items-start justify-between gap-3 p-4 border-2 rounded-lg cursor-pointer transition-colors ${paymentMethod === 'moolre' ? 'border-emerald-700 bg-emerald-50' : 'border-gray-300 hover:border-gray-400'}`}>
                           <div className="flex items-start gap-3 flex-1">
                             <input
@@ -640,6 +641,7 @@ export default function CheckoutPage() {
                             </div>
                           </div>
                         </label>
+                        */}
                       </div>
                     </div>
                   )}
