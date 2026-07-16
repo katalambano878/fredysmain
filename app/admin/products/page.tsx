@@ -62,7 +62,7 @@ export default function ProductsPage() {
         const list = Array.isArray(data) ? data : [];
         setStats({
           total: list.length,
-          lowStock: list.filter((p: any) => p.quantity < (p.metadata?.low_stock_threshold || 5) && p.quantity > 0).length,
+          lowStock: list.filter((p: any) => p.quantity < (p.metadata?.low_stock_threshold || 3) && p.quantity > 0).length,
           outOfStock: list.filter((p: any) => p.quantity === 0).length,
           active: list.filter((p: any) => p.status === 'active').length
         });
@@ -136,7 +136,7 @@ export default function ProductsPage() {
     if (statusFilter && product.status !== statusFilter) return false;
     if (stockFilter === 'out_of_stock') return (product.quantity ?? 0) === 0;
     if (stockFilter === 'low_stock') {
-      const threshold = product.metadata?.low_stock_threshold ?? 5;
+      const threshold = product.metadata?.low_stock_threshold ?? 3;
       const qty = product.quantity ?? 0;
       return qty > 0 && qty < threshold;
     }
@@ -391,7 +391,7 @@ export default function ProductsPage() {
                     <td className="py-4 px-4 font-semibold text-gray-900 whitespace-nowrap">GH₵ {product.price.toFixed(2)}</td>
                     <td className="py-4 px-4 text-gray-700">
                       {product.stock}
-                      {product.stock <= (product.metadata?.low_stock_threshold || 5) && product.stock > 0 && (
+                      {product.stock <= (product.metadata?.low_stock_threshold || 3) && product.stock > 0 && (
                         <span className="ml-2 w-2 h-2 rounded-full bg-amber-500 inline-block" title="Low Stock"></span>
                       )}
                       {product.stock === 0 && (

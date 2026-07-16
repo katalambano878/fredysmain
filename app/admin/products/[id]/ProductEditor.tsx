@@ -10,7 +10,7 @@ export default function ProductEditor({ productId }: { productId: string }) {
   const [comparePrice, setComparePrice] = useState('349.00');
   const [sku, setSku] = useState('LCB-FG-001');
   const [stock, setStock] = useState('15');
-  const [lowStockThreshold, setLowStockThreshold] = useState('5');
+  const [lowStockThreshold, setLowStockThreshold] = useState('3');
   const [description, setDescription] = useState('Crafted from premium full-grain leather, this sophisticated crossbody bag combines timeless elegance with modern functionality. Features adjustable strap, secure zip closure, and multiple interior pockets.');
   const [status, setStatus] = useState('Active');
   const [featured, setFeatured] = useState(true);

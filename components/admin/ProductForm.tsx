@@ -26,7 +26,7 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
     const [sku, setSku] = useState(initialData?.sku || '');
     const [stock, setStock] = useState(initialData?.quantity || '');
     const [moq, setMoq] = useState(initialData?.moq || '1');
-    const [lowStockThreshold, setLowStockThreshold] = useState(initialData?.metadata?.low_stock_threshold || '5');
+    const [lowStockThreshold, setLowStockThreshold] = useState(initialData?.metadata?.low_stock_threshold || '3');
     const [description, setDescription] = useState(initialData?.description || '');
     const [status, setStatus] = useState(initialData?.status || 'Active');
     const [featured, setFeatured] = useState(initialData?.featured || false);
@@ -545,7 +545,7 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                 seo_description: metaDescription,
                 tags: (keywords as string).split(',').map((k: string) => k.trim()).filter(Boolean),
                 metadata: {
-                    low_stock_threshold: parseInt(lowStockThreshold) || 5,
+                    low_stock_threshold: parseInt(lowStockThreshold) || 3,
                     preorder_shipping: preorderShipping.trim() || null,
                     wholesale_price: wholesalePrice ? parseFloat(wholesalePrice) : null,
                     wholesale_min_qty: wholesaleMinQty ? parseInt(wholesaleMinQty) : null

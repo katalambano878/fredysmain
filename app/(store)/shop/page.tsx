@@ -85,6 +85,7 @@ function ShopContent() {
                 product_images!product_id(url, position),
                 product_variants!left(id, name, price, quantity, option1, option2, image_url)
               `, { count: 'exact' })
+              .eq('status', 'active')
               .order('position', { foreignTable: 'product_images', ascending: true });
 
             if (search) {

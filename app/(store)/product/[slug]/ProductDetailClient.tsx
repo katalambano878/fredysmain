@@ -66,7 +66,8 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
                   categories(name),
                   product_variants(*),
                   product_images(url, position, alt_text, media_type)
-                `);
+                `)
+                .eq('status', 'active');
               const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
               if (isUUID) query = query.or(`id.eq.${slug},slug.eq.${slug}`);
               else query = query.eq('slug', slug);
@@ -147,6 +148,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
             (() => supabase
               .from('products')
               .select('*, product_images(url, position), product_variants(id, name, price, quantity)')
+              .eq('status', 'active')
               .eq('category_id', dataToTransform.category_id)
               .neq('id', dataToTransform.id)
               .limit(4)) as any,
