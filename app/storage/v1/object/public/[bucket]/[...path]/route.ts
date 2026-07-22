@@ -1,6 +1,7 @@
 import { readObject } from "@/lib/db/storage";
 
-export const dynamic = "force-dynamic";
+// Avoid force-dynamic — Next would emit Cache-Control: no-store and defeat
+// browser caching of large product images.
 export const runtime = "nodejs";
 
 export async function GET(

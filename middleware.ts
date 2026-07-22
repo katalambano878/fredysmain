@@ -136,13 +136,18 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // Do NOT no-store /storage/ — product images are large and must be
+  // browser-cached (route sets public, max-age=86400, immutable).
   if (
     pathname.startsWith('/api/') ||
     pathname.startsWith('/rest/') ||
-    pathname.startsWith('/auth/v1') ||
-    pathname.startsWith('/storage/')
+    pathname.startsWith('/auth/v1')
   ) {
     response.headers.set('Cache-Control', 'no-store');
+  }
+
+  if (pathname.startsWith('/storage/v1/object/public/')) {
+    response.headers.set('Cache-Control', 'public, max-age=86400, immutable');
   }
 
   return response;
