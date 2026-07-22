@@ -673,6 +673,33 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any; count: number
         const edge = this.findReverseEdge(embedTable);
         const fkCol = edge?.column ?? `${singularize(this.table)}_id`;
         const parentIds = Array.from(new Set(rows.map((r) => r.id).filter(Boolean)));
+
+        // PostgREST aggregate embed: product_variants(count) → [{ count: N }]
+        // Used heavily by admin product lists. Do NOT SELECT a literal "count" column.
+        const isCountOnly =
+          !embed.select.star &&
+          embed.select.columns.length === 1 &&
+          embed.select.columns[0] === "count" &&
+          embed.select.embeds.length === 0;
+        if (isCountOnly) {
+          const counts = new Map<any, number>();
+          if (parentIds.length) {
+            const ph = parentIds.map((_, i) => `$${i + 1}`).join(",");
+            const res = await pool.query(
+              `SELECT ${ident(fkCol)} AS parent_id, count(*)::int AS count
+               FROM ${ident(embedTable)}
+               WHERE ${ident(fkCol)} IN (${ph})
+               GROUP BY ${ident(fkCol)}`,
+              parentIds
+            );
+            for (const row of res.rows) counts.set(row.parent_id, Number(row.count) || 0);
+          }
+          for (const r of rows) {
+            r[embed.alias] = [{ count: counts.get(r.id) ?? 0 }];
+          }
+          continue;
+        }
+
         const wantId = embedWantsId(embed.select);
         const wantFk = embed.select.star || embed.select.columns.includes(fkCol);
         const innerCols = this.embedColumns(embed.select, fkCol);
