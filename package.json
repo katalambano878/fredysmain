@@ -3,7 +3,9 @@
     "@hello-pangea/dnd": "^18.0.1",
     "@react-google-maps/api": "^2.19.3",
     "@supabase/supabase-js": "^2.91.1",
+    "bcryptjs": "^2.4.3",
     "html2canvas": "^1.4.1",
+    "jose": "^5.10.0",
     "jspdf": "^4.2.0",
     "next": "^15.5.12",
     "pg": "^8.18.0",
@@ -14,11 +16,14 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.21",
     "cross-env": "^7.0.3",
+    "dotenv-cli": "^8.0.0",
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.0.0",
     "postcss": "^8.5.5",
@@ -31,7 +36,8 @@
     "build": "next build",
     "dev": "cross-env NODE_ENV=development next dev -H 0.0.0.0 -p 3009",
     "lint": "next lint",
-    "create-admin": "node scripts/create-admin.mjs"
+    "create-admin": "node scripts/create-admin.mjs",
+    "start": "next start -H 0.0.0.0 -p 3000"
   },
   "version": "0.1.0"
 }

@@ -1,9 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 // Simple in-memory cache
 let cache: { data: any; timestamp: number } | null = null;
@@ -21,7 +17,7 @@ export async function GET() {
     }
 
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
             .from('categories')
             .select('id, name, slug, image_url, parent_id, position, metadata')
             .eq('status', 'active')

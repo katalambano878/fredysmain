@@ -30,3 +30,8 @@ yarn-error.log*
 
 # Vercel
 .vercel
+
+# Plain-PG migration artifacts (local dumps — do not commit)
+migration-artifacts/dumps/
+migration-artifacts/storage/
+.env.staging
