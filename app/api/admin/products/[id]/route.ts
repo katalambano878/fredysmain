@@ -29,6 +29,14 @@ function getAccessToken(request: Request): string | null {
   return null;
 }
 
+function absoluteMediaUrl(url: string | null | undefined): string {
+  if (!url) return url as any;
+  if (/^https?:\/\//i.test(url) || url.startsWith('data:')) return url;
+  const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.STORAGE_PUBLIC_URL || '').replace(/\/+$/, '');
+  if (!base) return url;
+  return url.startsWith('/') ? `${base}${url}` : `${base}/${url}`;
+}
+
 async function requireAdmin(request: Request): Promise<NextResponse | null> {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 });
@@ -91,7 +99,15 @@ export async function GET(
       return NextResponse.json({ error: error?.message || 'Product not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ product: data });
+    const product = {
+      ...data,
+      product_images: (Array.isArray(data.product_images) ? data.product_images : []).map((img: any) => ({
+        ...img,
+        url: img.url ? absoluteMediaUrl(img.url) : img.url,
+      })),
+    };
+
+    return NextResponse.json({ product });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Failed to fetch product' }, { status: 500 });
   }

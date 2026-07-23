@@ -321,6 +321,16 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any; count: number
   like(col: string, value: any) { return this.cmp(col, "like", value); }
   ilike(col: string, value: any) { return this.cmp(col, "ilike", value); }
 
+  /** PostgREST `.contains()` / `cs` — jsonb containment (`@>`). */
+  contains(col: string, value: any) {
+    return this.cmp(col, "cs", value);
+  }
+
+  /** PostgREST `.containedBy()` / `cd` — jsonb contained-by (`<@`). */
+  containedBy(col: string, value: any) {
+    return this.cmp(col, "cd", value);
+  }
+
   is(col: string, value: any) {
     this.filters.push({ kind: "is", col, value });
     return this;
@@ -395,6 +405,8 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any; count: number
       } else if (f.kind === "in") {
         if (!f.values || f.values.length === 0) {
           clauses.push("false");
+        } else if (f.col!.includes(".")) {
+          clauses.push(this.embedInClause(f.col!, f.values, params));
         } else {
           const ph = f.values.map((v) => {
             params.push(v);
@@ -418,6 +430,16 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any; count: number
         clauses.push(`NOT (${inner})`);
       } else if (f.kind === "or") {
         clauses.push(this.orClause(f.orParts!, params));
+      } else if (f.kind === "raw" && f.sql) {
+        // Raw SQL fragments may include `$N` placeholders relative to f.params —
+        // rewrite them to absolute positions in the shared params array.
+        let sql = f.sql;
+        const local = f.params || [];
+        for (let i = 0; i < local.length; i++) {
+          params.push(local[i]);
+          sql = sql.replace(new RegExp(`\\$${i + 1}(?!\\d)`, "g"), `$${params.length}`);
+        }
+        clauses.push(sql);
       }
     }
     return clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
@@ -433,6 +455,26 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any; count: number
   private cmpClause(col: string, op: string, value: any, params: any[]): string {
     const negate = op.startsWith("not_");
     const bare = negate ? op.slice(4) : op;
+
+    // Embedded-resource filters: categories.slug=eq.foo → EXISTS subquery
+    if (col.includes(".")) {
+      const clause = this.embedCmpClause(col, bare, value, params);
+      return negate ? `NOT (${clause})` : clause;
+    }
+
+    // jsonb containment (PostgREST cs / cd)
+    if (bare === "cs" || bare === "cd") {
+      const json =
+        typeof value === "string" ? value : JSON.stringify(value ?? {});
+      params.push(json);
+      const left = ident(col);
+      const clause =
+        bare === "cs"
+          ? `${left} @> $${params.length}::jsonb`
+          : `${left} <@ $${params.length}::jsonb`;
+      return negate ? `NOT (${clause})` : clause;
+    }
+
     const sqlOp: Record<string, string> = {
       eq: "=",
       neq: "<>",
@@ -451,6 +493,96 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any; count: number
     const left = uuidSafeLeft(col, value);
     const clause = `${left} ${o} $${params.length}`;
     return negate ? `NOT (${clause})` : clause;
+  }
+
+  /**
+   * PostgREST embedded filters like `categories.slug=eq.casual-wear`.
+   * Translates to an EXISTS subquery joining via FK_MAP.
+   */
+  private embedRelation(embedAlias: string): {
+    embedTable: string;
+    parentCol: string;
+    childCol: string;
+  } {
+    const fwd = (FK_MAP[this.table] || []).find(
+      (e) => e.foreignTable === embedAlias
+    );
+    if (fwd) {
+      return {
+        embedTable: fwd.foreignTable,
+        parentCol: fwd.column,
+        childCol: fwd.foreignColumn,
+      };
+    }
+    // Reverse: embed table owns FK back to this.table
+    const rev = (FK_MAP[embedAlias] || []).find(
+      (e) => e.foreignTable === this.table
+    );
+    if (rev) {
+      return {
+        embedTable: embedAlias,
+        parentCol: rev.foreignColumn,
+        childCol: rev.column,
+      };
+    }
+    throw new Error(
+      `Unsupported embedded filter: no FK between ${this.table} and ${embedAlias}`
+    );
+  }
+
+  private embedCmpClause(
+    col: string,
+    op: string,
+    value: any,
+    params: any[]
+  ): string {
+    const [embedAlias, embedCol] = col.split(".");
+    if (!embedAlias || !embedCol || !PG_IDENT.test(embedAlias) || !PG_IDENT.test(embedCol)) {
+      throw new Error(`Unsafe embedded filter column: ${col}`);
+    }
+    const rel = this.embedRelation(embedAlias);
+    const sqlOp: Record<string, string> = {
+      eq: "=",
+      neq: "<>",
+      gt: ">",
+      gte: ">=",
+      lt: "<",
+      lte: "<=",
+      like: "LIKE",
+      ilike: "ILIKE",
+    };
+    const o = sqlOp[op];
+    if (!o) throw new Error(`Unsupported embedded operator: ${op}`);
+    params.push(value);
+    const embedLeft =
+      (embedCol === "id" || embedCol.endsWith("_id")) &&
+      typeof value === "string" &&
+      value.length > 0 &&
+      !UUID_RE.test(value)
+        ? `${ident(rel.embedTable)}.${ident(embedCol)}::text`
+        : `${ident(rel.embedTable)}.${ident(embedCol)}`;
+    return (
+      `EXISTS (SELECT 1 FROM ${ident(rel.embedTable)} ` +
+      `WHERE ${ident(rel.embedTable)}.${ident(rel.childCol)} = ${ident(this.table)}.${ident(rel.parentCol)} ` +
+      `AND ${embedLeft} ${o} $${params.length})`
+    );
+  }
+
+  private embedInClause(col: string, values: any[], params: any[]): string {
+    const [embedAlias, embedCol] = col.split(".");
+    if (!embedAlias || !embedCol || !PG_IDENT.test(embedAlias) || !PG_IDENT.test(embedCol)) {
+      throw new Error(`Unsafe embedded filter column: ${col}`);
+    }
+    const rel = this.embedRelation(embedAlias);
+    const ph = values.map((v) => {
+      params.push(v);
+      return `$${params.length}`;
+    });
+    return (
+      `EXISTS (SELECT 1 FROM ${ident(rel.embedTable)} ` +
+      `WHERE ${ident(rel.embedTable)}.${ident(rel.childCol)} = ${ident(this.table)}.${ident(rel.parentCol)} ` +
+      `AND ${ident(rel.embedTable)}.${ident(embedCol)} IN (${ph.join(",")}))`
+    );
   }
 
   // parse "col.op.val,col2.op2.val2" (PostgREST or-filter). Supports
@@ -1036,9 +1168,11 @@ export function applyPostgrestParams(
     // ("Unsupported operator: position").
     if (key.includes(".")) {
       const nested = key.split(".").pop();
+      // Nested embed modifiers from supabase-js — skip (not row filters)
       if (nested === "order" || nested === "limit" || nested === "offset") {
         continue;
       }
+      // Embedded-resource filters (e.g. categories.slug=eq.foo) fall through
     }
     if (key === "select") {
       qb.select(raw);
@@ -1083,12 +1217,14 @@ export function applyPostgrestParams(
     else if (op === "lte") qb.lte(key, coerce(value));
     else if (op === "like") qb.like(key, value);
     else if (op === "ilike") qb.ilike(key, value);
+    else if (op === "cs") qb.contains(key, coerceJson(value));
+    else if (op === "cd") qb.containedBy(key, coerceJson(value));
     else if (op === "is") qb.is(key, value === "null" ? null : coerce(value));
     else if (op === "in") {
       const inner = value.replace(/^\(/, "").replace(/\)$/, "");
       const vals = inner.split(",").map((s) => coerce(s.trim()));
       qb.in(key, vals);
-    }     else {
+    } else {
       qb.filter(key, op, value);
     }
   }
@@ -1104,4 +1240,13 @@ function coerce(v: string): any {
   // strip optional double-quotes used by PostgREST
   if (v.startsWith('"') && v.endsWith('"')) return v.slice(1, -1);
   return v;
+}
+
+/** Parse PostgREST cs/cd JSON payloads (`{"featured":true}` or already-parsed). */
+function coerceJson(v: string): any {
+  try {
+    return JSON.parse(v);
+  } catch {
+    return v;
+  }
 }

@@ -87,10 +87,12 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/admin')) return;
 
   // Strategy: Images - Cache First (long-lived)
+  // Includes self-hosted /storage/v1/... paths after plain-Postgres migration
   if (
     request.destination === 'image' ||
     url.pathname.match(/\.(png|jpg|jpeg|gif|webp|svg|ico)$/) ||
-    url.hostname.includes('supabase.co') && url.pathname.includes('/storage/')
+    url.pathname.startsWith('/storage/v1/') ||
+    (url.hostname.includes('supabase.co') && url.pathname.includes('/storage/'))
   ) {
     event.respondWith(
       caches.open(IMAGE_CACHE).then((cache) => {

@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
     supabaseAdmin
       .from('categories')
       .select('id, name, slug')
+      .eq('status', 'active')
       .ilike('name', pattern)
       .limit(4),
   ]);

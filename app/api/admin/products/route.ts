@@ -51,6 +51,14 @@ async function requireAdmin(request: Request): Promise<{ error: NextResponse } |
 
 const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/300?text=No+Image';
 
+function absoluteMediaUrl(url: string | null | undefined): string {
+  if (!url) return url as any;
+  if (/^https?:\/\//i.test(url) || url.startsWith('data:')) return url;
+  const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.STORAGE_PUBLIC_URL || '').replace(/\/+$/, '');
+  if (!base) return url;
+  return url.startsWith('/') ? `${base}${url}` : `${base}/${url}`;
+}
+
 /**
  * GET /api/admin/products
  * Returns products with product_images (and categories, variant count) using service role.
@@ -87,15 +95,18 @@ export async function GET(request: Request) {
     const products = (data || []).map((p: any) => {
       const images = Array.isArray(p.product_images) ? [...p.product_images] : [];
       images.sort((a: any, b: any) => (Number(a.position) ?? 0) - (Number(b.position) ?? 0));
-      const firstImageUrl = images.find((img: any) => Number(img.position) === 0)?.url
-        || images[0]?.url
-        || PLACEHOLDER_IMAGE;
+      const rawFirstUrl = images.find((img: any) => Number(img.position) === 0)?.url
+        || images[0]?.url;
+      const firstImageUrl = rawFirstUrl ? absoluteMediaUrl(rawFirstUrl) : PLACEHOLDER_IMAGE;
 
       return {
         ...p,
         category: p.categories?.name || 'Uncategorized',
         image: firstImageUrl,
-        product_images: images,
+        product_images: images.map((img: any) => ({
+          ...img,
+          url: img.url ? absoluteMediaUrl(img.url) : img.url,
+        })),
         variantsCount: p.product_variants?.[0]?.count || 0,
         stock: p.quantity,
         sales: 0,

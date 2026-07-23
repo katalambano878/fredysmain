@@ -5,7 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import ProductCard, { type ColorVariant } from '@/components/ProductCard';
 import { getColorHex } from '@/components/ProductCard';
-import { supabase } from '@/lib/supabase';
 import { cachedQuery } from '@/lib/query-cache';
 import { HERO_IMAGES } from '@/lib/hero-images';
 
@@ -72,74 +71,50 @@ function ShopContent() {
       }
       try {
         const search = searchParams.get('search');
+        const fetchSize = selectedAge ? 100 : productsPerPage;
+
+        // Resolve category + child slugs for the server shop API
+        let categorySlugs = 'all';
+        if (selectedCategory !== 'all') {
+          const categoryObj = categories.find((c) => c.slug === selectedCategory);
+          if (categoryObj) {
+            const childSlugs = categories
+              .filter((c) => c.parent_id === categoryObj.id)
+              .map((c) => c.slug);
+            categorySlugs = [selectedCategory, ...childSlugs].join(',');
+          } else {
+            categorySlugs = selectedCategory;
+          }
+        }
 
         const cacheKey = `shop:${selectedCategory}:${selectedAge}:${search}:${priceRange.join('-')}:${selectedRating}:${sortBy}:${page}`;
         const { data, count, error } = await cachedQuery<{ data: any; count: any; error: any }>(
           cacheKey,
           async () => {
-            let query = supabase
-              .from('products')
-              .select(`
-                *,
-                categories!inner(name, slug),
-                product_images!product_id(url, position),
-                product_variants!left(id, name, price, quantity, option1, option2, image_url)
-              `, { count: 'exact' })
-              .eq('status', 'active')
-              .order('position', { foreignTable: 'product_images', ascending: true });
+            // Use server shop API (plain-PG safe: category embeds + status filter)
+            const qs = new URLSearchParams({
+              page: String(page),
+              limit: String(fetchSize),
+              sortBy,
+              priceMin: String(priceRange[0]),
+              priceMax: String(priceRange[1]),
+              rating: String(selectedRating),
+              categorySlugs,
+            });
+            if (search) qs.set('search', search);
 
-            if (search) {
-              query = query.ilike('name', `%${search}%`);
+            const res = await fetch(`/api/storefront/shop?${qs.toString()}`, {
+              credentials: 'same-origin',
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              return { data: null, count: 0, error: { message: json.error || 'Shop fetch failed' } };
             }
-
-            if (selectedCategory !== 'all') {
-              const categoryObj = categories.find(c => c.slug === selectedCategory);
-
-              if (categoryObj) {
-                const targetSlugs = [selectedCategory];
-                const childSlugs = categories
-                  .filter(c => c.parent_id === categoryObj.id)
-                  .map(c => c.slug);
-                targetSlugs.push(...childSlugs);
-                query = query.in('categories.slug', targetSlugs);
-              } else {
-                query = query.eq('categories.slug', selectedCategory);
-              }
-            }
-
-            if (priceRange[1] < 5000) {
-              query = query.gte('price', priceRange[0]).lte('price', priceRange[1]);
-            }
-
-            if (selectedRating > 0) {
-              query = query.gte('rating_avg', selectedRating);
-            }
-
-            switch (sortBy) {
-              case 'price-low':
-                query = query.order('price', { ascending: true });
-                break;
-              case 'price-high':
-                query = query.order('price', { ascending: false });
-                break;
-              case 'rating':
-                query = query.order('rating_avg', { ascending: false });
-                break;
-              case 'new':
-                query = query.order('created_at', { ascending: false });
-                break;
-              case 'popular':
-              default:
-                query = query.order('created_at', { ascending: false });
-                break;
-            }
-
-            const fetchSize = selectedAge ? 100 : productsPerPage;
-            const from = (page - 1) * fetchSize;
-            const to = from + fetchSize - 1;
-            query = query.range(from, to);
-
-            return query as any;
+            return {
+              data: Array.isArray(json.data) ? json.data : [],
+              count: typeof json.count === 'number' ? json.count : 0,
+              error: null,
+            };
           },
           2 * 60 * 1000
         );

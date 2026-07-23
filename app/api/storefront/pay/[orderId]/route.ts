@@ -33,7 +33,7 @@ export async function GET(
         // Fetch current product stock
         const { data: product } = await supabaseAdmin
           .from('products')
-          .select('stock, status, name')
+          .select('quantity, status, name')
           .eq('id', item.product_id)
           .single();
 
@@ -53,18 +53,18 @@ export async function GET(
         if (variantId) {
           const { data: variant } = await supabaseAdmin
             .from('product_variants')
-            .select('stock')
+            .select('quantity')
             .eq('id', variantId)
             .single();
 
-          if (variant && typeof variant.stock === 'number' && variant.stock < item.quantity) {
+          if (variant && typeof variant.quantity === 'number' && variant.quantity < item.quantity) {
             outOfStockItems.push(`${item.product_name}${item.variant_name ? ` (${item.variant_name})` : ''}`);
             continue;
           }
         }
 
         // Check overall product stock
-        if (typeof product.stock === 'number' && product.stock < item.quantity) {
+        if (typeof product.quantity === 'number' && product.quantity < item.quantity) {
           outOfStockItems.push(item.product_name);
         }
       }

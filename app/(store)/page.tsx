@@ -27,28 +27,50 @@ export default function Home() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [productsResult, categoriesResult] = await Promise.all([
+        const [productsResult, categoriesRes] = await Promise.all([
           supabase
             .from('products')
             .select('*, product_variants(*), product_images(*)')
             .eq('status', 'active')
             .order('created_at', { ascending: false })
             .limit(12),
-          supabase
+          // Prefer server API (plain-PG safe). Fallback to client query with contains().
+          fetch('/api/storefront/categories')
+            .then(async (r) => (r.ok ? r.json() : null))
+            .catch(() => null),
+        ]);
+
+        if (productsResult.error) throw productsResult.error;
+        setFeaturedProducts(productsResult.data || []);
+
+        let featured: any[] = [];
+        if (Array.isArray(categoriesRes)) {
+          featured = categoriesRes.filter(
+            (c: any) =>
+              c?.status !== 'inactive' &&
+              c?.parent_id == null &&
+              c?.metadata?.featured === true
+          );
+        } else {
+          const { data, error } = await supabase
             .from('categories')
             .select('id, name, slug, parent_id, position, metadata')
             .eq('status', 'active')
             .contains('metadata', { featured: true })
             .is('parent_id', null)
             .order('position', { ascending: true })
-            .order('name', { ascending: true }),
-        ]);
+            .order('name', { ascending: true });
+          if (error) throw error;
+          featured = data || [];
+        }
 
-        if (productsResult.error) throw productsResult.error;
-        setFeaturedProducts(productsResult.data || []);
-
-        if (categoriesResult.error) throw categoriesResult.error;
-        setFeaturedCategories(categoriesResult.data || []);
+        featured.sort((a, b) => {
+          const pa = Number(a.position ?? 0);
+          const pb = Number(b.position ?? 0);
+          if (pa !== pb) return pa - pb;
+          return String(a.name || '').localeCompare(String(b.name || ''));
+        });
+        setFeaturedCategories(featured);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
