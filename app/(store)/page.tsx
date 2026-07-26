@@ -9,7 +9,7 @@ import ProductCard, {
   type ColorVariant,
   getColorHex,
 } from '@/components/ProductCard';
-import AnimatedSection, { AnimatedGrid } from '@/components/AnimatedSection';
+import AnimatedSection from '@/components/AnimatedSection';
 import { usePageTitle } from '@/hooks/usePageTitle';
 
 export default function Home() {
@@ -311,17 +311,17 @@ export default function Home() {
           </div>
 
           {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[...Array(3)].map((_, i) => (
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4">
+              {[...Array(4)].map((_, i) => (
                 <div key={i} className="animate-pulse">
-                  <div className="bg-gray-200 aspect-[4/5] rounded-2xl mb-4" />
-                  <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
-                  <div className="h-4 bg-gray-200 rounded w-1/2" />
+                  <div className="bg-gray-200 aspect-[3/4] rounded-xl mb-2 sm:mb-3" />
+                  <div className="h-3 bg-gray-200 rounded w-3/4 mb-1.5" />
+                  <div className="h-3 bg-gray-200 rounded w-1/2" />
                 </div>
               ))}
             </div>
           ) : (
-            <AnimatedGrid className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4">
               {popularProducts.map((product) => {
                 const variants = product.product_variants || [];
                 const hasVariants = variants.length > 0;
@@ -366,7 +366,7 @@ export default function Home() {
                     originalPrice={product.compare_at_price}
                     image={
                       product.product_images?.[0]?.url ||
-                      'https://via.placeholder.com/400x500'
+                      '/frebys-logo.png'
                     }
                     rating={product.rating_avg || 5}
                     reviewCount={product.review_count || 0}
@@ -380,7 +380,7 @@ export default function Home() {
                   />
                 );
               })}
-            </AnimatedGrid>
+            </div>
           )}
         </div>
       </AnimatedSection>
@@ -402,33 +402,34 @@ export default function Home() {
           </div>
 
           <div className="relative overflow-hidden">
-            <div className="flex gap-4 animate-just-landed-scroll pb-2 [--card-width:240px] hover:[animation-play-state:paused]">
+            <div className="flex gap-2.5 sm:gap-3 animate-just-landed-scroll pb-2 [--card-width:150px] sm:[--card-width:180px] hover:[animation-play-state:paused]">
               {[...(latestProducts.length ? latestProducts : popularProducts), ...(latestProducts.length ? latestProducts : popularProducts)].map(
                 (product, index) => (
                   <div
                     key={`${product.id}-${index}`}
-                    className="min-w-[180px] sm:min-w-[220px] max-w-[260px] w-[var(--card-width)] flex-shrink-0 rounded-xl sm:rounded-2xl bg-white shadow-sm hover:shadow-md transition-shadow"
+                    className="min-w-[140px] sm:min-w-[170px] max-w-[190px] w-[var(--card-width)] flex-shrink-0 rounded-xl bg-white shadow-sm hover:shadow-md transition-shadow"
                   >
-                    <div className="relative aspect-[4/5] rounded-xl sm:rounded-2xl overflow-hidden bg-brand-green/10">
+                    <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-brand-green/10">
                       <Image
                         src={
                           product.product_images?.[0]?.url ||
-                          'https://via.placeholder.com/400x500'
+                          '/frebys-logo.png'
                         }
                         alt={product.name}
                         fill
+                        sizes="150px"
                         className="object-cover"
                       />
                     </div>
-                    <div className="p-3">
-                      <p className="text-xs uppercase tracking-wide text-brand-green mb-1">
+                    <div className="p-2 sm:p-2.5">
+                      <p className="text-[10px] uppercase tracking-wide text-brand-green mb-0.5">
                         New drop
                       </p>
-                      <p className="text-sm font-semibold text-gray-900 line-clamp-2">
+                      <p className="text-xs sm:text-sm font-semibold text-gray-900 line-clamp-2">
                         {product.name}
                       </p>
-                      <div className="mt-2 flex items-center justify-between">
-                        <span className="text-sm font-bold text-gray-900">
+                      <div className="mt-1.5 flex items-center justify-between">
+                        <span className="text-xs sm:text-sm font-bold text-gray-900">
                           GH₵{Number(product.price || 0).toFixed(2)}
                         </span>
                         <Link

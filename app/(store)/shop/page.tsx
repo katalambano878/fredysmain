@@ -8,6 +8,9 @@ import { getColorHex } from '@/components/ProductCard';
 import { cachedQuery } from '@/lib/query-cache';
 import { HERO_IMAGES } from '@/lib/hero-images';
 
+const PRODUCT_GRID =
+  'grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4';
+
 function ShopContent() {
   usePageTitle('Shop Kids Ready-to-Wear Outfits');
   const searchParams = useSearchParams();
@@ -28,8 +31,13 @@ function ShopContent() {
   const [sortBy, setSortBy] = useState('popular');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [page, setPage] = useState(1);
-  const productsPerPage = 9;
+  const productsPerPage = 12;
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const categoriesRef = useRef(categories);
+  categoriesRef.current = categories;
+  const priceMin = priceRange[0];
+  const priceMax = priceRange[1];
+  const searchQuery = searchParams.get('search') || '';
 
   const ageOptions = ['6 months', 'Age 1', 'Age 2', 'Age 3', 'Age 4', 'Age 5', 'Age 6', 'Age 7', 'Age 8', 'Age 9', 'Age 10', 'Age 11', 'Age 12'];
 
@@ -61,8 +69,15 @@ function ShopContent() {
     fetchCategories();
   }, []);
 
-  // Fetch Products
+  // Reset to page 1 when filters change (not when page alone changes)
   useEffect(() => {
+    setPage(1);
+  }, [selectedCategory, selectedAge, priceMin, priceMax, selectedRating, sortBy, searchQuery]);
+
+  // Fetch Products — do NOT depend on categories identity (causes remount/freeze)
+  useEffect(() => {
+    let cancelled = false;
+
     async function fetchProducts() {
       if (page === 1) {
         setLoading(true);
@@ -70,15 +85,14 @@ function ShopContent() {
         setLoadingMore(true);
       }
       try {
-        const search = searchParams.get('search');
         const fetchSize = selectedAge ? 100 : productsPerPage;
+        const cats = categoriesRef.current;
 
-        // Resolve category + child slugs for the server shop API
         let categorySlugs = 'all';
         if (selectedCategory !== 'all') {
-          const categoryObj = categories.find((c) => c.slug === selectedCategory);
+          const categoryObj = cats.find((c) => c.slug === selectedCategory);
           if (categoryObj) {
-            const childSlugs = categories
+            const childSlugs = cats
               .filter((c) => c.parent_id === categoryObj.id)
               .map((c) => c.slug);
             categorySlugs = [selectedCategory, ...childSlugs].join(',');
@@ -87,21 +101,20 @@ function ShopContent() {
           }
         }
 
-        const cacheKey = `shop:${selectedCategory}:${selectedAge}:${search}:${priceRange.join('-')}:${selectedRating}:${sortBy}:${page}`;
+        const cacheKey = `shop:${selectedCategory}:${selectedAge}:${searchQuery}:${priceMin}-${priceMax}:${selectedRating}:${sortBy}:${page}`;
         const { data, count, error } = await cachedQuery<{ data: any; count: any; error: any }>(
           cacheKey,
           async () => {
-            // Use server shop API (plain-PG safe: category embeds + status filter)
             const qs = new URLSearchParams({
               page: String(page),
               limit: String(fetchSize),
               sortBy,
-              priceMin: String(priceRange[0]),
-              priceMax: String(priceRange[1]),
+              priceMin: String(priceMin),
+              priceMax: String(priceMax),
               rating: String(selectedRating),
               categorySlugs,
             });
-            if (search) qs.set('search', search);
+            if (searchQuery) qs.set('search', searchQuery);
 
             const res = await fetch(`/api/storefront/shop?${qs.toString()}`, {
               credentials: 'same-origin',
@@ -119,11 +132,10 @@ function ShopContent() {
           2 * 60 * 1000
         );
 
+        if (cancelled) return;
         if (error) throw error;
 
         if (data) {
-          const fetchSize = selectedAge ? 100 : productsPerPage;
-          // If the DB returned a full batch, assume there may be more to load
           setHasMore(data.length === fetchSize);
 
           let filtered = data;
@@ -140,8 +152,12 @@ function ShopContent() {
           const formattedProducts = filtered.map((p: any) => {
             const variants = p.product_variants || [];
             const hasVariants = variants.length > 0;
-            const minVariantPrice = hasVariants ? Math.min(...variants.map((v: any) => v.price || p.price)) : undefined;
-            const totalVariantStock = hasVariants ? variants.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0) : 0;
+            const minVariantPrice = hasVariants
+              ? Math.min(...variants.map((v: any) => v.price || p.price))
+              : undefined;
+            const totalVariantStock = hasVariants
+              ? variants.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0)
+              : 0;
             const effectiveStock = hasVariants ? totalVariantStock : p.quantity;
             const colorVariants: ColorVariant[] = [];
             const seenColors = new Set<string>();
@@ -156,14 +172,14 @@ function ShopContent() {
               }
             }
             return {
-              id: p.id,           // Product UUID for cart/orders
-              slug: p.slug,       // Slug for navigation
+              id: p.id,
+              slug: p.slug,
               name: p.name,
               price: p.price,
               originalPrice: p.compare_at_price,
-              image: p.product_images?.[0]?.url || 'https://via.placeholder.com/800x800?text=No+Image',
+              image: p.product_images?.[0]?.url || '/frebys-logo.png',
               rating: p.rating_avg || 0,
-              reviewCount: 0, // Need to implement reviews relation
+              reviewCount: 0,
               badge: p.compare_at_price > p.price ? 'Sale' : undefined,
               inStock: effectiveStock > 0,
               maxStock: effectiveStock || 50,
@@ -174,9 +190,11 @@ function ShopContent() {
               colorVariants,
             };
           });
-          setProducts(prev => (page === 1 ? formattedProducts : [...prev, ...formattedProducts]));
+          setProducts((prev) => (page === 1 ? formattedProducts : [...prev, ...formattedProducts]));
           if (selectedAge) {
-            setTotalProducts(prev => (page === 1 ? formattedProducts.length : prev + formattedProducts.length));
+            setTotalProducts((prev) =>
+              page === 1 ? formattedProducts.length : prev + formattedProducts.length
+            );
           } else {
             setTotalProducts(count || 0);
           }
@@ -184,25 +202,39 @@ function ShopContent() {
       } catch (err) {
         console.error('Error fetching products:', err);
       } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        if (!cancelled) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     }
 
     fetchProducts();
-  }, [selectedCategory, selectedAge, priceRange, selectedRating, sortBy, page, searchParams, categories]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedCategory,
+    selectedAge,
+    priceMin,
+    priceMax,
+    selectedRating,
+    sortBy,
+    page,
+    searchQuery,
+  ]);
 
-  // Infinite scroll: load the next page when the sentinel scrolls into view
+  // Infinite scroll — tighter margin to avoid loading too many pages at once
   useEffect(() => {
     const el = loadMoreRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
-          setPage(prev => prev + 1);
+          setPage((prev) => prev + 1);
         }
       },
-      { rootMargin: '600px 0px' }
+      { rootMargin: '240px 0px' }
     );
     observer.observe(el);
     return () => observer.disconnect();
@@ -471,19 +503,19 @@ function ShopContent() {
                 </div>
               </div>
 
-              {loading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {[...Array(6)].map((_, i) => (
-                    <div key={i} className="rounded-2xl border border-brand-green/20 bg-white p-3">
-                      <div className="bg-brand-greenLight rounded-xl aspect-[4/5] animate-pulse"></div>
-                      <div className="mt-3 h-4 w-3/4 rounded bg-brand-green/20 animate-pulse"></div>
-                      <div className="mt-2 h-4 w-1/2 rounded bg-brand-green/20 animate-pulse"></div>
+              {loading && products.length === 0 ? (
+                <div className={PRODUCT_GRID}>
+                  {[...Array(8)].map((_, i) => (
+                    <div key={i} className="rounded-xl border border-brand-green/20 bg-white p-2 sm:p-3">
+                      <div className="bg-brand-greenLight rounded-lg aspect-[3/4] animate-pulse"></div>
+                      <div className="mt-2 h-3 w-3/4 rounded bg-brand-green/20 animate-pulse"></div>
+                      <div className="mt-1.5 h-3 w-1/2 rounded bg-brand-green/20 animate-pulse"></div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" data-product-shop>
+                  <div className={PRODUCT_GRID} data-product-shop>
                     {products.map(product => (
                       <ProductCard key={product.id} {...product} />
                     ))}
@@ -517,12 +549,12 @@ function ShopContent() {
               {!loading && products.length > 0 && (
                 <>
                   {loadingMore && (
-                    <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {[...Array(3)].map((_, i) => (
-                        <div key={i} className="rounded-2xl border border-brand-green/20 bg-white p-3">
-                          <div className="bg-brand-greenLight rounded-xl aspect-[4/5] animate-pulse"></div>
-                          <div className="mt-3 h-4 w-3/4 rounded bg-brand-green/20 animate-pulse"></div>
-                          <div className="mt-2 h-4 w-1/2 rounded bg-brand-green/20 animate-pulse"></div>
+                    <div className={`mt-6 ${PRODUCT_GRID}`}>
+                      {[...Array(4)].map((_, i) => (
+                        <div key={i} className="rounded-xl border border-brand-green/20 bg-white p-2 sm:p-3">
+                          <div className="bg-brand-greenLight rounded-lg aspect-[3/4] animate-pulse"></div>
+                          <div className="mt-2 h-3 w-3/4 rounded bg-brand-green/20 animate-pulse"></div>
+                          <div className="mt-1.5 h-3 w-1/2 rounded bg-brand-green/20 animate-pulse"></div>
                         </div>
                       ))}
                     </div>

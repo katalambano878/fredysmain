@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { compressImageBuffer } from '@/lib/image-compress';
+import { isPlainPostgres } from '@/lib/db/mode';
 
 function getAccessToken(request: Request): string | null {
   const authHeader = request.headers.get('authorization');
@@ -26,7 +28,7 @@ function getAccessToken(request: Request): string | null {
 }
 
 async function requireAdmin(request: Request): Promise<NextResponse | null> {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!isPlainPostgres() && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 });
   }
   const token = getAccessToken(request);
@@ -48,7 +50,7 @@ async function requireAdmin(request: Request): Promise<NextResponse | null> {
 /**
  * POST /api/admin/upload
  * Body: multipart/form-data with field "file" (and optional "bucket", default "product-images").
- * Returns { url: string } public URL. Uses service role so storage RLS is bypassed.
+ * Returns { url: string } public URL. Compresses images before storage.
  */
 export async function POST(request: Request) {
   const err = await requireAdmin(request);
@@ -68,12 +70,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing file' }, { status: 400 });
     }
 
-    const ext = file.name.split('.').pop() || 'jpg';
+    const originalExt = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const inputBuf = Buffer.from(await file.arrayBuffer());
+    const inputType = file.type || `image/${originalExt === 'jpg' ? 'jpeg' : originalExt}`;
+
+    const compressed = await compressImageBuffer(inputBuf, inputType);
+    const ext = compressed.ext || (compressed.contentType.includes('webp') ? 'webp' : originalExt);
     const path = `cat-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
-    const { error } = await supabaseAdmin.storage.from(bucket).upload(path, file, {
-      cacheControl: '3600',
+    const { error } = await supabaseAdmin.storage.from(bucket).upload(path, compressed.buffer, {
+      cacheControl: '31536000',
       upsert: false,
+      contentType: compressed.contentType,
     });
 
     if (error) {
@@ -81,7 +89,11 @@ export async function POST(request: Request) {
     }
 
     const { data: { publicUrl } } = supabaseAdmin.storage.from(bucket).getPublicUrl(path);
-    return NextResponse.json({ url: publicUrl });
+    return NextResponse.json({
+      url: publicUrl,
+      bytes: compressed.buffer.length,
+      contentType: compressed.contentType,
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Upload failed' }, { status: 500 });
   }

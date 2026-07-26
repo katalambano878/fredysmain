@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import LazyImage from './LazyImage';
 import { useCart } from '@/context/CartContext';
-import { moneyLabel } from '@/lib/format-money';
+import { asNumber, moneyLabel } from '@/lib/format-money';
 
 // Map common color names to hex values for swatches
 const COLOR_MAP: Record<string, string> = {
@@ -27,7 +27,6 @@ const COLOR_MAP: Record<string, string> = {
 export function getColorHex(colorName: string): string | null {
   const lower = colorName.toLowerCase().trim();
   if (COLOR_MAP[lower]) return COLOR_MAP[lower];
-  // Try partial match (e.g. "Light Blue" -> "blue")
   for (const [key, val] of Object.entries(COLOR_MAP)) {
     if (lower.includes(key)) return val;
   }
@@ -77,117 +76,127 @@ export default function ProductCard({
   const { addToCart } = useCart();
   const [activeColor, setActiveColor] = useState<string | null>(null);
   const displayPrice = hasVariants && minVariantPrice ? minVariantPrice : price;
-  const discount = originalPrice ? Math.round((1 - displayPrice / originalPrice) * 100) : 0;
-  const MAX_SWATCHES = 5;
-
-  const formatPrice = (val: unknown) => moneyLabel(val);
+  const discount = originalPrice
+    ? Math.round((1 - asNumber(displayPrice) / asNumber(originalPrice)) * 100)
+    : 0;
+  const MAX_SWATCHES = 4;
+  const ratingSafe = asNumber(rating, 0);
 
   return (
-    <article className="group h-full w-full overflow-hidden rounded-[1.35rem] border border-black/5 bg-white shadow-[0_10px_28px_rgba(16,24,40,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_18px_36px_rgba(16,24,40,0.14)]">
+    <article className="group flex h-full w-full flex-col overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm transition-shadow duration-200 hover:shadow-md sm:rounded-2xl">
       <Link
         href={`/product/${slug}`}
-        className="relative block aspect-[4/5] overflow-hidden bg-gray-100"
+        className="relative block aspect-[3/4] overflow-hidden bg-gray-100"
       >
         <LazyImage
           src={image}
           alt={name}
-          className="h-full w-full object-cover object-top transition-transform duration-700 group-hover:scale-[1.05]"
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+          className="h-full w-full object-cover object-top transition-transform duration-500 group-hover:scale-[1.03]"
         />
 
-        <div className="absolute left-3 top-3 flex items-center gap-2">
+        <div className="absolute left-1.5 top-1.5 flex max-w-[85%] flex-wrap items-center gap-1 sm:left-2.5 sm:top-2.5 sm:gap-1.5">
           {badge && (
-            <span className="rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-800 shadow-sm">
+            <span className="rounded-full bg-white/95 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-gray-800 shadow-sm sm:px-2 sm:text-[10px]">
               {badge}
             </span>
           )}
           {discount > 0 && (
-            <span className="rounded-full bg-brand-orange px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm">
+            <span className="rounded-full bg-brand-orange px-1.5 py-0.5 text-[9px] font-semibold text-white shadow-sm sm:px-2 sm:text-[10px]">
               -{discount}%
             </span>
           )}
         </div>
 
         {!inStock && (
-          <div className="absolute inset-0 flex items-center justify-center bg-white/70 backdrop-blur-[2px]">
-            <span className="rounded-full bg-gray-900 px-4 py-2 text-xs font-semibold text-white">
+          <div className="absolute inset-0 flex items-center justify-center bg-white/70">
+            <span className="rounded-full bg-gray-900 px-3 py-1.5 text-[10px] font-semibold text-white sm:text-xs">
               Out of Stock
             </span>
           </div>
         )}
       </Link>
 
-      <div className="flex flex-col p-4">
-        <div className="mb-2 flex items-center justify-between gap-2 text-xs">
-          <span className={`inline-flex items-center rounded-full px-2.5 py-1 font-medium ${
-            inStock ? 'bg-brand-greenLight text-brand-greenDark' : 'bg-gray-100 text-gray-500'
-          }`}>
+      <div className="flex flex-1 flex-col p-2 sm:p-3">
+        <div className="mb-1 flex items-center justify-between gap-1 text-[10px] sm:mb-1.5 sm:text-xs">
+          <span
+            className={`inline-flex items-center rounded-full px-1.5 py-0.5 font-medium sm:px-2 ${
+              inStock ? 'bg-brand-greenLight text-brand-greenDark' : 'bg-gray-100 text-gray-500'
+            }`}
+          >
             {inStock ? 'In stock' : 'Unavailable'}
           </span>
-          <div className="inline-flex items-center gap-1 text-gray-500">
-            <i className="ri-star-fill text-brand-orange" />
-            <span>{rating.toFixed(1)}</span>
-            {reviewCount > 0 && <span>({reviewCount})</span>}
+          <div className="inline-flex items-center gap-0.5 text-gray-500">
+            <i className="ri-star-fill text-[10px] text-brand-orange sm:text-xs" />
+            <span>{ratingSafe.toFixed(1)}</span>
+            {reviewCount > 0 && <span className="hidden sm:inline">({reviewCount})</span>}
           </div>
         </div>
 
-        <Link href={`/product/${slug}`} className="mb-2">
-          <h3 className="line-clamp-2 text-base font-semibold leading-snug text-gray-900 transition-colors group-hover:text-brand-greenDark">
+        <Link href={`/product/${slug}`} className="mb-1 sm:mb-1.5">
+          <h3 className="line-clamp-2 text-xs font-semibold leading-snug text-gray-900 transition-colors group-hover:text-brand-greenDark sm:text-sm">
             {name}
           </h3>
         </Link>
 
         {colorVariants.length > 0 && (
-          <div className="mb-3 flex items-center gap-1.5">
+          <div className="mb-1.5 flex items-center gap-1 sm:mb-2 sm:gap-1.5">
             {colorVariants.slice(0, MAX_SWATCHES).map((color) => (
               <button
                 key={color.name}
+                type="button"
                 title={color.name}
                 onClick={(e) => {
                   e.preventDefault();
                   setActiveColor(activeColor === color.name ? null : color.name);
                 }}
-                className={`h-4 w-4 flex-shrink-0 rounded-full border transition-all duration-200 ${
+                className={`h-3 w-3 flex-shrink-0 rounded-full border transition-transform sm:h-3.5 sm:w-3.5 ${
                   activeColor === color.name
                     ? 'scale-110 ring-2 ring-brand-green ring-offset-1'
-                    : 'hover:scale-110'
+                    : ''
                 } ${color.hex === '#FFFFFF' ? 'border-gray-300' : 'border-transparent'}`}
                 style={{ backgroundColor: color.hex }}
               />
             ))}
             {colorVariants.length > MAX_SWATCHES && (
-              <span className="ml-0.5 text-xs text-gray-400">+{colorVariants.length - MAX_SWATCHES}</span>
+              <span className="text-[10px] text-gray-400">+{colorVariants.length - MAX_SWATCHES}</span>
             )}
           </div>
         )}
 
-        <div className="mb-4 flex items-baseline gap-2">
-          <span className="text-xl font-extrabold text-gray-900">
-            {hasVariants && minVariantPrice ? `From ${formatPrice(minVariantPrice)}` : formatPrice(price)}
+        <div className="mb-2 mt-auto flex items-baseline gap-1 sm:mb-2.5 sm:gap-1.5">
+          <span className="text-sm font-extrabold text-gray-900 sm:text-base">
+            {hasVariants && minVariantPrice
+              ? `From ${moneyLabel(minVariantPrice)}`
+              : moneyLabel(price)}
           </span>
-          {originalPrice && (
-            <span className="text-sm text-gray-400 line-through">{formatPrice(originalPrice)}</span>
+          {originalPrice != null && asNumber(originalPrice) > 0 && (
+            <span className="text-[10px] text-gray-400 line-through sm:text-xs">
+              {moneyLabel(originalPrice)}
+            </span>
           )}
         </div>
 
         {hasVariants ? (
           <Link
             href={`/product/${slug}`}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-brand-green/25 bg-white py-3 text-sm font-semibold text-brand-greenDark transition-colors hover:bg-brand-greenLight"
+            className="inline-flex w-full items-center justify-center gap-1 rounded-lg border border-brand-green/25 bg-white py-2 text-[11px] font-semibold text-brand-greenDark transition-colors hover:bg-brand-greenLight sm:rounded-xl sm:py-2.5 sm:text-sm"
           >
-            <i className="ri-list-check text-base" />
-            <span>Select options</span>
+            <i className="ri-list-check text-sm" />
+            <span>Options</span>
           </Link>
         ) : (
           <button
+            type="button"
             onClick={(e) => {
               e.preventDefault();
               addToCart({ id, name, price, image, quantity: moq, slug, maxStock, moq });
             }}
             disabled={!inStock}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-orange py-3 text-sm font-semibold text-white shadow-md transition-colors hover:bg-brand-orangeDark disabled:cursor-not-allowed disabled:bg-gray-300"
+            className="inline-flex w-full items-center justify-center gap-1 rounded-lg bg-brand-orange py-2 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-orangeDark disabled:cursor-not-allowed disabled:bg-gray-300 sm:rounded-xl sm:py-2.5 sm:text-sm"
           >
-            <i className="ri-shopping-cart-2-line text-base" />
-            <span>{moq > 1 ? `Add ${moq} to cart` : 'Add to cart'}</span>
+            <i className="ri-shopping-cart-2-line text-sm" />
+            <span>{moq > 1 ? `Add ${moq}` : 'Add'}</span>
           </button>
         )}
       </div>
