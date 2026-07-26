@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import MiniCart from './MiniCart';
 import { useCart } from '@/context/CartContext';
 import { supabase } from '@/lib/supabase';
+import { moneyLabel } from '@/lib/format-money';
 import { useCMS } from '@/context/CMSContext';
 import AnnouncementBar from './AnnouncementBar';
 
@@ -226,7 +227,7 @@ export default function Header() {
                             <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
                             <p className="text-xs text-gray-500">{p.category}</p>
                           </div>
-                          <p className="text-sm font-bold text-gray-900 whitespace-nowrap">GH₵ {p.price?.toFixed(2)}</p>
+                          <p className="text-sm font-bold text-gray-900 whitespace-nowrap">{moneyLabel(p.price)}</p>
                         </Link>
                       ))}
                       <button

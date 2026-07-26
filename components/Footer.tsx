@@ -4,6 +4,60 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useCMS } from '@/context/CMSContext';
 
+function NewsletterForm() {
+  const [email, setEmail] = useState('');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle');
+  const [message, setMessage] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    setStatus('loading');
+    setMessage('');
+    try {
+      const res = await fetch('/api/newsletter/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Subscription failed');
+      setStatus('ok');
+      setMessage('Thanks for subscribing!');
+      setEmail('');
+    } catch (err: unknown) {
+      setStatus('err');
+      setMessage(err instanceof Error ? err.message : 'Could not subscribe');
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-2 pt-4 border-t border-emerald-800/50">
+      <p className="text-sm font-semibold text-emerald-100">Newsletter</p>
+      <div className="flex gap-2">
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Your email"
+          className="flex-1 min-w-0 px-3 py-2 rounded-lg text-sm text-gray-900 border-0"
+          required
+        />
+        <button
+          type="submit"
+          disabled={status === 'loading'}
+          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-lg disabled:opacity-60"
+        >
+          Join
+        </button>
+      </div>
+      {message && (
+        <p className={`text-xs ${status === 'err' ? 'text-red-300' : 'text-emerald-200'}`}>{message}</p>
+      )}
+    </form>
+  );
+}
+
 function FooterSection({ title, children }: { title: string, children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -50,8 +104,7 @@ export default function Footer() {
               />
             </Link>
             <p className="text-emerald-200/80 leading-relaxed text-sm">
-              {siteTagline.replace(/Less\.?$/i, "").trimEnd()}{" "}
-              <Link href="/admin" className="text-inherit hover:text-inherit no-underline">Less.</Link>
+              {siteTagline.replace(/Less\.?$/i, '').trimEnd()}
             </p>
 
             <div className="flex gap-4 pt-2">
@@ -80,6 +133,8 @@ export default function Footer() {
                 </a>
               )}
             </div>
+
+            <NewsletterForm />
           </div>
 
           {/* Links Sections */}
@@ -117,7 +172,13 @@ export default function Footer() {
         </div>
 
         <div className="border-t border-emerald-800/50 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-emerald-400/60">
-          <p>&copy; {new Date().getFullYear()} {siteName}. All rights reserved.</p>
+          <p>
+            &copy;{' '}
+            <Link href="/admin/login" className="hover:text-emerald-300/80 transition-colors">
+              {new Date().getFullYear()}
+            </Link>{' '}
+            {siteName}. All rights reserved.
+          </p>
           <p>
             Powered by{' '}
             <a

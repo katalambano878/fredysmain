@@ -27,6 +27,15 @@ export async function cachedQuery<T>(
   }
   
   const data = await queryFn();
+  // Do not cache failed lookups / error payloads (avoids sticky "0 products" / not-found)
+  if (
+    data &&
+    typeof data === 'object' &&
+    'error' in (data as Record<string, unknown>) &&
+    (data as { error?: unknown }).error
+  ) {
+    return data;
+  }
   cache.set(key, { data, timestamp: Date.now() });
   return data;
 }

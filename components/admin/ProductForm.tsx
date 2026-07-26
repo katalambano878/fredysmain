@@ -5,6 +5,8 @@ import { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { supabase } from '@/lib/supabase'; // used for categories fetch only
 import { useRouter } from 'next/navigation';
+import { buildProductSeo } from '@/lib/product-seo';
+import { asNumber, money } from '@/lib/format-money';
 
 interface ProductFormProps {
     initialData?: any;
@@ -313,20 +315,22 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
         Object.keys(initialPerVariantCosts).length > 0
     );
 
-    const generateSeoFields = (name: string, desc: string) => {
-        const title = name ? `${name} | Freby’s Fashion GH` : '';
-        const metaDesc = desc
-            ? (desc.length > 160 ? desc.substring(0, 157).trimEnd() + '...' : desc)
-            : name ? `Shop ${name} at Freby’s Fashion GH. Unique kids ready-to-wear outfits for all occasions. Worldwide delivery.` : '';
-        const kw = name
-            ? [...new Set([
-                name.toLowerCase(),
-                ...name.toLowerCase().split(/\s+/).filter(w => w.length > 2),
-                'frebys fashion', 'kids ankara ghana', 'kids fashion'
-              ])].join(', ')
-            : '';
-        return { title, metaDesc, kw };
-    };
+    const categoryName = categories.find((c) => c.id === categoryId)?.name || '';
+
+    // Auto-generate SEO when name changes and fields are still empty (respect manual edits)
+    useEffect(() => {
+        if (!productName.trim()) return;
+        const seo = buildProductSeo({
+            name: productName,
+            description,
+            categoryName,
+            siteName: "Freby's Fashion GH",
+        });
+        if (!seoTitleEdited && !seoTitle.trim()) setSeoTitle(seo.seo_title);
+        if (!metaDescEdited && !metaDescription.trim()) setMetaDescription(seo.seo_description);
+        if (!keywordsEdited && !keywords.trim()) setKeywords(seo.tags.join(', '));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [productName, description, categoryName]);
 
     const tabs = [
         { id: 'general', label: 'General', icon: 'ri-information-line' },
@@ -372,16 +376,6 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
             setUrlSlug(productName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''));
         }
     }, [productName, isEditMode, urlSlug]);
-
-    // Auto-generate SEO fields from name + description (only if not manually edited)
-    useEffect(() => {
-        if (isEditMode) return; // don't auto-overwrite on edit
-        const { title, metaDesc, kw } = generateSeoFields(productName, description);
-        if (!seoTitleEdited) setSeoTitle(title);
-        if (!metaDescEdited) setMetaDescription(metaDesc);
-        if (!keywordsEdited) setKeywords(kw);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [productName, description]);
 
     // Auto-generate SKU for new products
     useEffect(() => {
@@ -894,7 +888,7 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                 <p className="text-blue-900 font-semibold mb-1">Discount Calculation</p>
                                 {price && comparePrice && parseFloat(comparePrice) > parseFloat(price) ? (
                                     <p className="text-blue-800">
-                                        Savings: GH₵ {(parseFloat(comparePrice) - parseFloat(price)).toFixed(2)}
+                                        Savings: GH₵ {money(asNumber(comparePrice) - asNumber(price))}
                                         <span className="ml-2">
                                             ({(((parseFloat(comparePrice) - parseFloat(price)) / parseFloat(comparePrice)) * 100).toFixed(0)}% off)
                                         </span>
@@ -1875,10 +1869,10 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                                                                     />
                                                                                 </td>
                                                                                 <td className="py-2 px-2 text-right font-semibold text-gray-900 whitespace-nowrap">
-                                                                                    {unit > 0 ? `GH₵ ${unit.toFixed(2)}` : '—'}
+                                                                                    {unit > 0 ? `GH₵ ${money(unit)}` : '—'}
                                                                                 </td>
                                                                                 <td className="py-2 px-2 text-right text-gray-900 whitespace-nowrap">
-                                                                                    {variantStock > 0 && unit > 0 ? `GH₵ ${inventoryCost.toFixed(2)}` : '—'}
+                                                                                    {variantStock > 0 && unit > 0 ? `GH₵ ${money(inventoryCost)}` : '—'}
                                                                                 </td>
                                                                                 <td className="py-2 pr-5 sm:pr-3 pl-2 text-right">
                                                                                     {hasOverride && (
@@ -1903,7 +1897,7 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                                                                 Default per-unit cost
                                                                             </td>
                                                                             <td className="py-2 px-2 text-right font-semibold text-gray-900 whitespace-nowrap">
-                                                                                GH₵ {defaultUnit.toFixed(2)}
+                                                                                GH₵ {money(defaultUnit)}
                                                                             </td>
                                                                             <td colSpan={2} />
                                                                         </tr>
@@ -1939,15 +1933,15 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                         if (basePrice > 0) {
                                             sale = basePrice;
                                             priceSource = 'product';
-                                            priceLabel = `GH₵ ${sale.toFixed(2)}`;
+                                            priceLabel = `GH₵ ${money(sale)}`;
                                         } else if (variantPrices.length > 0) {
                                             sale = minVariant;
                                             if (minVariant === maxVariant) {
                                                 priceSource = 'variant-single';
-                                                priceLabel = `GH₵ ${sale.toFixed(2)}`;
+                                                priceLabel = `GH₵ ${money(sale)}`;
                                             } else {
                                                 priceSource = 'variant-range';
-                                                priceLabel = `GH₵ ${minVariant.toFixed(2)} – GH₵ ${maxVariant.toFixed(2)}`;
+                                                priceLabel = `GH₵ ${money(minVariant)} – GH₵ ${money(maxVariant)}`;
                                             }
                                         } else {
                                             priceLabel = 'Set price first';
@@ -2011,7 +2005,7 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                                     <dl className="space-y-2 text-sm">
                                                         <div className="flex justify-between gap-4 border-b border-gray-200 pb-2">
                                                             <dt className="text-gray-600">Default gross cost</dt>
-                                                            <dd className="font-semibold text-gray-900">GH₵ {gross.toFixed(2)}</dd>
+                                                            <dd className="font-semibold text-gray-900">GH₵ {money(gross)}</dd>
                                                         </div>
                                                         <div className="flex justify-between gap-4 border-b border-gray-200 pb-2">
                                                             <dt className="text-gray-600">Retail price</dt>
@@ -2020,7 +2014,7 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                                         <div className="flex justify-between gap-4 border-b border-gray-200 pb-2">
                                                             <dt className="text-gray-600">Gross profit / unit</dt>
                                                             <dd className={`font-semibold ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                                                                {sale > 0 ? `GH₵ ${profit.toFixed(2)}` : '—'}
+                                                                {sale > 0 ? `GH₵ ${money(profit)}` : '—'}
                                                             </dd>
                                                         </div>
                                                         <div className="flex justify-between gap-4 pb-1">
@@ -2054,19 +2048,19 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                                         <div className="flex justify-between gap-4 border-b border-emerald-200/70 pb-2">
                                                             <dt className="text-gray-600">Total cost (cost × stock)</dt>
                                                             <dd className="font-semibold text-gray-900">
-                                                                {totalUnits > 0 ? `GH₵ ${totalInventoryCost.toFixed(2)}` : '—'}
+                                                                {totalUnits > 0 ? `GH₵ ${money(totalInventoryCost)}` : '—'}
                                                             </dd>
                                                         </div>
                                                         <div className="flex justify-between gap-4 border-b border-emerald-200/70 pb-2">
                                                             <dt className="text-gray-600">Total retail value</dt>
                                                             <dd className="font-semibold text-gray-900">
-                                                                {totalUnits > 0 && totalInventoryRetail > 0 ? `GH₵ ${totalInventoryRetail.toFixed(2)}` : '—'}
+                                                                {totalUnits > 0 && totalInventoryRetail > 0 ? `GH₵ ${money(totalInventoryRetail)}` : '—'}
                                                             </dd>
                                                         </div>
                                                         <div className="flex justify-between gap-4 border-b border-emerald-200/70 pb-2">
                                                             <dt className="text-gray-600">Potential gross profit</dt>
                                                             <dd className={`font-semibold ${totalInventoryProfit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                                                                {totalUnits > 0 && totalInventoryRetail > 0 ? `GH₵ ${totalInventoryProfit.toFixed(2)}` : '—'}
+                                                                {totalUnits > 0 && totalInventoryRetail > 0 ? `GH₵ ${money(totalInventoryProfit)}` : '—'}
                                                             </dd>
                                                         </div>
                                                         <div className="flex justify-between gap-4 pb-1">
@@ -2101,11 +2095,16 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        const { title, metaDesc, kw } = generateSeoFields(productName, description);
-                                        setSeoTitle(title);
-                                        setMetaDescription(metaDesc);
-                                        setKeywords(kw);
-                                        if (productName) setUrlSlug(productName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''));
+                                        const seo = buildProductSeo({
+                                            name: productName,
+                                            description,
+                                            categoryName,
+                                            siteName: "Freby's Fashion GH",
+                                        });
+                                        setSeoTitle(seo.seo_title);
+                                        setMetaDescription(seo.seo_description);
+                                        setKeywords(seo.tags.join(', '));
+                                        if (productName) setUrlSlug(seo.slug);
                                         setSeoTitleEdited(false);
                                         setMetaDescEdited(false);
                                         setKeywordsEdited(false);

@@ -81,7 +81,22 @@ export async function GET(
   const headers = new Headers(corsHeaders());
   headers.set("Content-Type", "application/json");
   if (result.count != null) {
-    headers.set("Content-Range", `0-${Math.max((Array.isArray(result.data) ? result.data.length : 1) - 1, 0)}/${result.count}`);
+    const rows = Array.isArray(result.data)
+      ? result.data
+      : result.data
+        ? [result.data]
+        : [];
+    const len = rows.length;
+    const offset = Math.max(0, Number(params.get("offset") || 0) || 0);
+    // PostgREST: empty/head counts use */N (fixes shop "12 of 0")
+    if (len === 0) {
+      headers.set("Content-Range", `*/${result.count}`);
+    } else {
+      headers.set(
+        "Content-Range",
+        `${offset}-${offset + len - 1}/${result.count}`
+      );
+    }
   }
 
   if (preferSingle(req)) {

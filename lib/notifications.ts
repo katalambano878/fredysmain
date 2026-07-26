@@ -86,6 +86,30 @@ function maskPhone(phone: string): string {
     return phone.slice(0, 4) + '****' + phone.slice(-2);
 }
 
+export async function sendNewsletterWelcome(email: string) {
+    if (!process.env.RESEND_API_KEY) {
+        console.warn('[Email] RESEND_API_KEY not configured');
+        return null;
+    }
+    const code = (process.env.NEWSLETTER_PROMO_CODE || 'INSIDER10').trim();
+    const safeCode = escapeHtml(code);
+    return sendEmail({
+        to: email,
+        subject: `Your welcome offer — ${BRAND.name}`,
+        html: emailLayout(`
+<h2 style="margin:0 0 16px;color:#111827;font-size:22px;text-align:center;">Welcome to Freby's</h2>
+<p style="color:#374151;font-size:14px;line-height:1.7;margin:16px 0;">Thanks for subscribing. Use this code on your <strong>first order</strong>:</p>
+<div style="background-color:#ecfdf5;border:2px dashed #059669;border-radius:12px;padding:20px;margin:24px 0;text-align:center;">
+  <p style="margin:0 0 8px;color:#047857;font-size:12px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;">Your code</p>
+  <p style="margin:0;color:#064e3b;font-size:28px;font-weight:800;letter-spacing:0.15em;">${safeCode}</p>
+  <p style="margin:12px 0 0;color:#64748b;font-size:13px;">Welcome offer on your first order</p>
+</div>
+<p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 16px;">You'll also get updates on new arrivals, restocks, and exclusive kidswear deals.</p>
+<p style="text-align:center;margin:24px 0 0;"><a href="${BRAND.url}/shop" style="display:inline-block;background:${BRAND.color};color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Shop now</a></p>
+`, `Your welcome code: ${code}`),
+    });
+}
+
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
     if (!process.env.RESEND_API_KEY) {
         console.warn('[Email] RESEND_API_KEY not configured');

@@ -2,32 +2,46 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { useCart } from '@/context/CartContext';
+import { asNumber, money, moneyLabel } from '@/lib/format-money';
+
+interface OrderItem {
+  id: string;
+  productId: string | null;
+  name: string;
+  image: string;
+  quantity: number;
+  price: number;
+  variant?: string | null;
+  slug?: string;
+}
 
 interface Order {
   id: string;
   orderNumber: string;
+  email: string;
   date: string;
   status: string;
   total: number;
-  items: {
-    id: string;
-    name: string;
-    image: string;
-    quantity: number;
-    price: number;
-  }[];
+  items: OrderItem[];
 }
 
 export default function OrderHistory() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userEmail, setUserEmail] = useState('');
+  const [reorderingId, setReorderingId] = useState<string | null>(null);
+  const { addToCart, setIsCartOpen } = useCart();
+  const router = useRouter();
 
   useEffect(() => {
     async function fetchOrders() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
+        if (session.user.email) setUserEmail(session.user.email);
 
         const { data, error } = await supabase
           .from('orders')
@@ -44,16 +58,20 @@ export default function OrderHistory() {
           const formattedOrders = data.map((order: any) => ({
             id: order.id,
             orderNumber: order.order_number,
+            email: order.email || session.user.email || '',
             date: order.created_at,
             status: order.status,
-            total: order.total,
+            total: asNumber(order.total),
             items: order.order_items.map((item: any) => ({
               id: item.id,
+              productId: item.product_id || null,
               name: item.product_name,
-              image: item.metadata?.image || 'https://via.placeholder.com/150',
+              image: item.metadata?.image || '/frebys-logo.png',
               quantity: item.quantity,
-              price: item.unit_price
-            }))
+              price: asNumber(item.unit_price),
+              variant: item.variant_name || null,
+              slug: item.metadata?.slug || '',
+            })),
           }));
           setOrders(formattedOrders);
         }
@@ -79,20 +97,59 @@ export default function OrderHistory() {
         return 'bg-yellow-100 text-yellow-700';
       case 'cancelled':
         return 'bg-red-100 text-red-700';
-      default: // pending
+      default:
         return 'bg-gray-100 text-gray-700';
     }
   };
 
-  const handleReorder = (order: Order) => {
-    // Implement reorder logic (add items back to cart)
-    console.log('Reordering:', order);
-    alert('Reorder feature coming soon!');
+  const handleReorder = async (order: Order) => {
+    setReorderingId(order.id);
+    try {
+      let added = 0;
+      for (const item of order.items) {
+        if (!item.productId) continue;
+        const { data: product, error } = await supabase
+          .from('products')
+          .select('id, slug, name, price, quantity, moq, status, product_images(url)')
+          .eq('id', item.productId)
+          .single();
+        if (error || !product) continue;
+        if (product.status === 'archived' || product.status === 'draft') continue;
+
+        const stock = asNumber(product.quantity);
+        const images = (product as any).product_images as { url: string }[] | undefined;
+        const image =
+          images?.[0]?.url ||
+          item.image ||
+          'https://via.placeholder.com/150';
+
+        addToCart({
+          id: product.id,
+          name: product.name || item.name,
+          price: asNumber(product.price, item.price),
+          image,
+          quantity: Math.max(1, item.quantity),
+          variant: item.variant || undefined,
+          slug: product.slug || item.slug || product.id,
+          maxStock: Math.max(1, stock || item.quantity || 1),
+          moq: asNumber(product.moq, 1) || 1,
+        });
+        added += 1;
+      }
+
+      if (added === 0) {
+        window.alert('None of the items from this order are available to reorder right now.');
+        return;
+      }
+      setIsCartOpen(true);
+      router.push('/cart');
+    } finally {
+      setReorderingId(null);
+    }
   };
 
   const handleDownloadInvoice = (orderId: string) => {
-    console.log('Downloading invoice for order:', orderId);
-    alert('Invoice download coming soon!');
+    router.push(`/account/invoice/${orderId}?print=true`);
   };
 
   if (loading) {
@@ -129,91 +186,100 @@ export default function OrderHistory() {
       </div>
 
       <div className="space-y-6">
-        {orders.map((order) => (
-          <div key={order.id} className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden">
-            <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
-              <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-4">
-                <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-4 sm:gap-6 w-full sm:w-auto">
-                  <div className="w-full sm:w-auto">
-                    <p className="text-xs text-gray-600 mb-1">Order Number</p>
-                    <p className="font-bold text-gray-900">{order.orderNumber}</p>
+        {orders.map((order) => {
+          const trackEmail = order.email || userEmail;
+          const trackHref = `/order-tracking?order=${encodeURIComponent(order.orderNumber)}&email=${encodeURIComponent(trackEmail)}`;
+          const helpHref = `/contact?order=${encodeURIComponent(order.orderNumber)}&subject=${encodeURIComponent(`Help with order ${order.orderNumber}`)}`;
+
+          return (
+            <div key={order.id} className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden">
+              <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
+                <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center justify-between gap-4">
+                  <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-4 sm:gap-6 w-full sm:w-auto">
+                    <div className="w-full sm:w-auto">
+                      <p className="text-xs text-gray-600 mb-1">Order Number</p>
+                      <p className="font-bold text-gray-900">{order.orderNumber}</p>
+                    </div>
+                    <div className="w-full sm:w-auto">
+                      <p className="text-xs text-gray-600 mb-1">Date</p>
+                      <p className="font-semibold text-gray-900">
+                        {new Date(order.date).toLocaleDateString('en-GB', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                    <div className="w-full sm:w-auto">
+                      <p className="text-xs text-gray-600 mb-1">Total</p>
+                      <p className="font-bold text-gray-900">{moneyLabel(order.total)}</p>
+                    </div>
                   </div>
                   <div className="w-full sm:w-auto">
-                    <p className="text-xs text-gray-600 mb-1">Date</p>
-                    <p className="font-semibold text-gray-900">
-                      {new Date(order.date).toLocaleDateString('en-GB', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric'
-                      })}
-                    </p>
-                  </div>
-                  <div className="w-full sm:w-auto">
-                    <p className="text-xs text-gray-600 mb-1">Total</p>
-                    <p className="font-bold text-gray-900">GH₵{order.total.toFixed(2)}</p>
+                    <span className={`inline-block px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap ${getStatusColor(order.status)}`}>
+                      {order.status === 'shipped' ? 'Packaged' : order.status === 'dispatched_to_rider' ? 'Dispatched To Rider' : order.status.replace(/_/g, ' ').replace(/^\w/, (c: string) => c.toUpperCase())}
+                    </span>
                   </div>
                 </div>
-                <div className="w-full sm:w-auto">
-                  <span className={`inline-block px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap ${getStatusColor(order.status)}`}>
-                    {order.status === 'shipped' ? 'Packaged' : order.status === 'dispatched_to_rider' ? 'Dispatched To Rider' : order.status.replace(/_/g, ' ').replace(/^\w/, (c: string) => c.toUpperCase())}
-                  </span>
+              </div>
+
+              <div className="p-6">
+                <div className="space-y-4 mb-4">
+                  {order.items.map((item) => (
+                    <div key={item.id} className="flex space-x-4">
+                      <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200">
+                        <img
+                          src={item.image}
+                          alt={item.name}
+                          className="w-full h-full object-cover object-center"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-gray-900 mb-1">{item.name}</h4>
+                        <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
+                        <p className="text-sm font-bold text-gray-900 mt-1">{moneyLabel(item.price)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-col sm:flex-row flex-wrap gap-3 pt-4 border-t border-gray-200">
+                  <Link
+                    href={trackHref}
+                    className="flex-1 sm:flex-none text-center px-4 py-2 bg-gray-900 text-white rounded-lg font-semibold hover:bg-gray-800 transition-colors whitespace-nowrap"
+                  >
+                    <i className="ri-map-pin-line mr-2"></i>
+                    Track Order
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => handleReorder(order)}
+                    disabled={reorderingId === order.id}
+                    className="flex-1 sm:flex-none px-4 py-2 border-2 border-gray-300 text-gray-900 rounded-lg font-semibold hover:bg-gray-50 transition-colors whitespace-nowrap disabled:opacity-50"
+                  >
+                    <i className="ri-refresh-line mr-2"></i>
+                    {reorderingId === order.id ? 'Adding…' : 'Reorder'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadInvoice(order.id)}
+                    className="flex-1 sm:flex-none px-4 py-2 border-2 border-gray-300 text-gray-900 rounded-lg font-semibold hover:bg-gray-50 transition-colors whitespace-nowrap"
+                  >
+                    <i className="ri-download-line mr-2"></i>
+                    Invoice
+                  </button>
+                  <Link
+                    href={helpHref}
+                    className="flex-1 sm:flex-none text-center px-4 py-2 border-2 border-gray-300 text-gray-900 rounded-lg font-semibold hover:bg-gray-50 transition-colors whitespace-nowrap"
+                  >
+                    <i className="ri-customer-service-line mr-2"></i>
+                    Get Help
+                  </Link>
                 </div>
               </div>
             </div>
-
-            <div className="p-6">
-              <div className="space-y-4 mb-4">
-                {order.items.map((item) => (
-                  <div key={item.id} className="flex space-x-4">
-                    <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200">
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className="w-full h-full object-cover object-center"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-gray-900 mb-1">{item.name}</h4>
-                      <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
-                      <p className="text-sm font-bold text-gray-900 mt-1">GH₵{item.price.toFixed(2)}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex flex-col sm:flex-row flex-wrap gap-3 pt-4 border-t border-gray-200">
-                <Link
-                  href={`/order-tracking?order=${order.orderNumber}`}
-                  className="flex-1 sm:flex-none text-center px-4 py-2 bg-gray-900 text-white rounded-lg font-semibold hover:bg-gray-800 transition-colors whitespace-nowrap"
-                >
-                  <i className="ri-map-pin-line mr-2"></i>
-                  Track Order
-                </Link>
-                <button
-                  onClick={() => handleReorder(order)}
-                  className="flex-1 sm:flex-none px-4 py-2 border-2 border-gray-300 text-gray-900 rounded-lg font-semibold hover:bg-gray-50 transition-colors whitespace-nowrap"
-                >
-                  <i className="ri-refresh-line mr-2"></i>
-                  Reorder
-                </button>
-                <button
-                  onClick={() => handleDownloadInvoice(order.id)}
-                  className="flex-1 sm:flex-none px-4 py-2 border-2 border-gray-300 text-gray-900 rounded-lg font-semibold hover:bg-gray-50 transition-colors whitespace-nowrap"
-                >
-                  <i className="ri-download-line mr-2"></i>
-                  Invoice
-                </button>
-                <Link
-                  href="/contact"
-                  className="flex-1 sm:flex-none text-center px-4 py-2 border-2 border-gray-300 text-gray-900 rounded-lg font-semibold hover:bg-gray-50 transition-colors whitespace-nowrap"
-                >
-                  <i className="ri-customer-service-line mr-2"></i>
-                  Get Help
-                </Link>
-              </div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { moneyLabel } from '@/lib/format-money';
 
 interface PreorderItem {
     quantity: number;
@@ -261,7 +262,7 @@ export default function AdminPreordersPage() {
                                                 )}
                                             </td>
                                             <td className="py-4 px-4 font-semibold text-gray-900 whitespace-nowrap">
-                                                GH₵ {order.total?.toFixed(2) || '0.00'}
+                                                {moneyLabel(order.total)}
                                             </td>
                                             <td className="py-4 px-4 text-sm whitespace-nowrap">
                                                 <span

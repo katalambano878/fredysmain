@@ -6,15 +6,12 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '10mb',
     },
   },
+  // Coolify Dockerfile runner uses standalone + writable .next/cache
+  output: 'standalone',
   images: {
-    unoptimized: true,
+    unoptimized: true, // sharp/cache often broken on Coolify non-root runners
     minimumCacheTTL: 2592000,
     remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '*.supabase.co',
-        pathname: '/storage/v1/object/public/**',
-      },
       {
         protocol: 'https',
         hostname: 'www.frebysfashion.com',
@@ -33,10 +30,6 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'images.unsplash.com',
-      },
-      {
-        protocol: 'https',
-        hostname: 'via.placeholder.com',
       },
     ],
   },

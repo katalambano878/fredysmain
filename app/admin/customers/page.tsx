@@ -35,12 +35,51 @@ export default function AdminCustomersPage() {
       }
 
       if (customerData) {
-        const processed = customerData.map((customer: any) => {
-          // Determine status dynamically
-          let status = 'New';
-          const totalSpent = Number(customer.total_spent) || 0;
-          const totalOrders = customer.total_orders || 0;
+        const { data: ordersData } = await supabase
+          .from('orders')
+          .select('id, user_id, email, total, status, created_at')
+          .order('created_at', { ascending: false })
+          .limit(5000);
 
+        type OrderAgg = {
+          orders: number;
+          totalSpent: number;
+          lastOrder: Date | null;
+        };
+
+        const aggByEmailUser = new Map<string, OrderAgg>();
+
+        const bump = (key: string, total: number, createdAt: string) => {
+          const existing = aggByEmailUser.get(key) || { orders: 0, totalSpent: 0, lastOrder: null };
+          existing.orders += 1;
+          existing.totalSpent += total;
+          const d = new Date(createdAt);
+          if (!existing.lastOrder || d > existing.lastOrder) existing.lastOrder = d;
+          aggByEmailUser.set(key, existing);
+        };
+
+        (ordersData || []).forEach((o: any) => {
+          if (o.status === 'cancelled') return;
+          const email = (o.email || '').toLowerCase().trim();
+          if (!email) return;
+          const key = `${email}::${o.user_id || 'guest'}`;
+          bump(key, Number(o.total) || 0, o.created_at);
+        });
+
+        const customerEmails = new Set(
+          customerData.map((c: any) => (c.email || '').toLowerCase().trim()).filter(Boolean)
+        );
+
+        const processed = customerData.map((customer: any) => {
+          const emailKey = (customer.email || '').toLowerCase().trim();
+          const aggKey = `${emailKey}::${customer.user_id || 'guest'}`;
+          const agg = aggByEmailUser.get(aggKey);
+
+          const totalSpent = agg ? agg.totalSpent : Number(customer.total_spent) || 0;
+          const totalOrders = agg ? agg.orders : customer.total_orders || 0;
+          const lastOrderAt = agg?.lastOrder || (customer.last_order_at ? new Date(customer.last_order_at) : null);
+
+          let status = 'New';
           if (totalSpent > 1000) status = 'VIP';
           else if (totalOrders > 0) status = 'Active';
           else if (new Date(customer.created_at).getTime() < Date.now() - 30 * 24 * 60 * 60 * 1000) status = 'Inactive';
@@ -59,14 +98,39 @@ export default function AdminCustomersPage() {
             orders: totalOrders,
             totalSpent: totalSpent,
             joined: new Date(customer.created_at).toLocaleDateString(),
-            lastOrder: customer.last_order_at ? timeAgo(new Date(customer.last_order_at)) : 'Never',
+            lastOrder: lastOrderAt ? timeAgo(lastOrderAt) : 'Never',
             status: status,
             rawJoined: new Date(customer.created_at),
-            rawLastOrder: customer.last_order_at ? new Date(customer.last_order_at) : null,
+            rawLastOrder: lastOrderAt,
             isGuest: !customer.user_id
           };
         });
-        setCustomers(processed);
+
+        // Guest buyers from orders not in customers table
+        const extraGuests: any[] = [];
+        aggByEmailUser.forEach((agg, key) => {
+          const [email] = key.split('::');
+          if (!email || customerEmails.has(email)) return;
+          if (key.endsWith('::guest') || key.includes('::null')) {
+            extraGuests.push({
+              id: `guest-${email}`,
+              name: 'Guest',
+              email,
+              phone: 'N/A',
+              avatar: getInitials(email),
+              orders: agg.orders,
+              totalSpent: agg.totalSpent,
+              joined: agg.lastOrder ? agg.lastOrder.toLocaleDateString() : '—',
+              lastOrder: agg.lastOrder ? timeAgo(agg.lastOrder) : 'Never',
+              status: agg.totalSpent > 1000 ? 'VIP' : agg.orders > 0 ? 'Active' : 'New',
+              rawJoined: agg.lastOrder || new Date(0),
+              rawLastOrder: agg.lastOrder,
+              isGuest: true,
+            });
+          }
+        });
+
+        setCustomers([...processed, ...extraGuests]);
       }
     } catch (error) {
       console.error('Error fetching customers:', error);

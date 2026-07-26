@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { moneyLabel } from '@/lib/format-money';
 
 interface SearchProduct {
   id: string;
@@ -198,9 +199,9 @@ export default function AdvancedSearch() {
                         <p className="text-xs text-gray-500">{product.category}</p>
                       </div>
                       <div className="text-right">
-                        <p className="font-bold text-gray-900 text-sm">GH₵ {product.price?.toFixed(2)}</p>
+                        <p className="font-bold text-gray-900 text-sm">{moneyLabel(product.price)}</p>
                         {product.compare_at_price && product.compare_at_price > product.price && (
-                          <p className="text-xs text-gray-400 line-through">GH₵ {product.compare_at_price.toFixed(2)}</p>
+                          <p className="text-xs text-gray-400 line-through">{moneyLabel(product.compare_at_price)}</p>
                         )}
                       </div>
                     </Link>

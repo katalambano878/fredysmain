@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import FraudDetectionAlert from '@/components/FraudDetectionAlert';
 import { supabase } from '@/lib/supabase';
+import { moneyLabel } from '@/lib/format-money';
 
 interface OrderDetailClientProps {
   orderId: string;
@@ -366,7 +367,7 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
                       <td className="py-2 px-2 font-medium">{item.product_name}</td>
                       <td className="py-2 px-2 text-sm">{item.variant_name || '-'}</td>
                       <td className="py-2 px-2 text-center font-bold">{item.quantity}</td>
-                      <td className="py-2 px-2 text-right">GH₵ {item.unit_price?.toFixed(2)}</td>
+                      <td className="py-2 px-2 text-right">{moneyLabel(item.unit_price)}</td>
                     </tr>
                   );
                 })}
@@ -384,9 +385,9 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
               {order?.packer?.full_name && <p><span className="font-semibold">Packed By:</span> {order.packer.full_name}</p>}
             </div>
             <div className="text-right">
-              <p>Subtotal: GH₵ {order?.subtotal?.toFixed(2)}</p>
-              <p>Shipping: GH₵ {order?.shipping_total?.toFixed(2)}</p>
-              <p className="font-bold text-lg border-t border-gray-400 pt-1 mt-1">Total: GH₵ {order?.total?.toFixed(2)}</p>
+              <p>Subtotal: {moneyLabel(order?.subtotal)}</p>
+              <p>Shipping: {moneyLabel(order?.shipping_total)}</p>
+              <p className="font-bold text-lg border-t border-gray-400 pt-1 mt-1">Total: {moneyLabel(order?.total)}</p>
             </div>
           </div>
 
@@ -482,7 +483,7 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
                       <p className="text-xs text-gray-500">SKU: {item.sku}</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold text-gray-900 mb-1">GH₵ {item.unit_price?.toFixed(2)}</p>
+                      <p className="font-semibold text-gray-900 mb-1">{moneyLabel(item.unit_price)}</p>
                       <p className="text-sm text-gray-600">Qty: {item.quantity}</p>
                     </div>
                   </div>
@@ -492,25 +493,25 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
               <div className="mt-6 pt-6 border-t border-gray-200 space-y-3">
                 <div className="flex justify-between text-gray-700">
                   <span>Subtotal</span>
-                  <span>GH₵ {order.subtotal?.toFixed(2)}</span>
+                  <span>{moneyLabel(order.subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-gray-700">
                   <span>Shipping</span>
-                  <span>GH₵ {order.shipping_total?.toFixed(2)}</span>
+                  <span>{moneyLabel(order.shipping_total)}</span>
                 </div>
                 <div className="flex justify-between text-gray-700">
                   <span>Tax</span>
-                  <span>GH₵ {order.tax_total?.toFixed(2)}</span>
+                  <span>{moneyLabel(order.tax_total)}</span>
                 </div>
                 {order.discount_total > 0 && (
                   <div className="flex justify-between text-gray-900 font-semibold">
                     <span>Discount</span>
-                    <span>-GH₵ {order.discount_total?.toFixed(2)}</span>
+                    <span>-{moneyLabel(order.discount_total)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-xl font-bold text-gray-900 pt-3 border-t border-gray-200">
                   <span>Total</span>
-                  <span>GH₵ {order.total?.toFixed(2)}</span>
+                  <span>{moneyLabel(order.total)}</span>
                 </div>
               </div>
             </div>

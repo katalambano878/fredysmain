@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { money, moneyLabel } from '@/lib/format-money';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -654,16 +655,10 @@ export default function InventoryManagementPage() {
                         </p>
                         <div className="flex items-center gap-3">
                             <button
-                                onClick={() => alert('Bulk restock coming soon — wire this to your purchase-order flow.')}
-                                className="px-4 py-2 bg-white text-gray-900 rounded-lg text-sm font-semibold hover:bg-gray-100"
-                            >
-                                Bulk Restock
-                            </button>
-                            <button
                                 onClick={() => setSelectedProducts([])}
                                 className="text-sm text-gray-200 hover:text-white"
                             >
-                                Clear
+                                Clear selection
                             </button>
                         </div>
                     </div>
@@ -787,7 +782,7 @@ export default function InventoryManagementPage() {
                                                         <span className="font-semibold text-gray-900">{stock}</span>
                                                     </td>
                                                     <td className="px-4 py-3 text-right font-semibold text-gray-900 whitespace-nowrap">
-                                                        GH₵{retailValue.toFixed(2)}
+                                                        {moneyLabel(retailValue)}
                                                     </td>
                                                     <td className="px-4 py-3">{statusBadge(status)}</td>
                                                     <td className="px-4 py-3 text-right">
@@ -824,8 +819,8 @@ export default function InventoryManagementPage() {
                                                                                     <td className="py-2 font-medium text-gray-900">{v.name}</td>
                                                                                     <td className="py-2 text-gray-600">{v.option2 || <span className="text-gray-300">—</span>}</td>
                                                                                     <td className="py-2 text-right font-semibold text-gray-900">{v.quantity}</td>
-                                                                                    <td className="py-2 text-right text-gray-700">GH₵{v.price.toFixed(2)}</td>
-                                                                                    <td className="py-2 text-right text-gray-700">GH₵{(v.price * v.quantity).toFixed(2)}</td>
+                                                                                    <td className="py-2 text-right text-gray-700">{moneyLabel(v.price)}</td>
+                                                                                    <td className="py-2 text-right text-gray-700">{moneyLabel(v.price * v.quantity)}</td>
                                                                                     <td className="py-2 pl-4">{statusBadge(vStatus)}</td>
                                                                                 </tr>
                                                                             );

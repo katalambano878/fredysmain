@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useCart } from '@/context/CartContext';
+import { moneyLabel } from '@/lib/format-money';
 
 interface MiniCartProps {
   isOpen: boolean;
@@ -115,7 +116,7 @@ export default function MiniCart({ isOpen, onClose }: MiniCartProps) {
 
                       <div className="flex items-center justify-between mt-2">
                         <span className="text-lg font-bold text-gray-900">
-                          GH₵{item.price.toFixed(2)}
+                          {moneyLabel(item.price)}
                         </span>
 
                         <div className="flex items-center border border-gray-300 rounded bg-white">
@@ -158,7 +159,7 @@ export default function MiniCart({ isOpen, onClose }: MiniCartProps) {
             <div className="border-t border-gray-200 p-6 bg-gray-50">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-gray-700 font-medium">Subtotal</span>
-                <span className="text-2xl font-bold text-gray-900">GH₵{subtotal.toFixed(2)}</span>
+                <span className="text-2xl font-bold text-gray-900">{moneyLabel(subtotal)}</span>
               </div>
 
               <p className="text-sm text-gray-600 mb-4 text-center">

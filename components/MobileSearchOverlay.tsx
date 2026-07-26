@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { moneyLabel } from '@/lib/format-money';
 
 interface MobileSearchOverlayProps {
   isOpen: boolean;
@@ -194,9 +195,9 @@ export default function MobileSearchOverlay({ isOpen, onClose }: MobileSearchOve
                     <h4 className="text-sm font-medium text-gray-900 truncate">{product.name}</h4>
                     <p className="text-xs text-gray-500 mt-0.5">{product.category}</p>
                     <div className="flex items-center gap-2 mt-1">
-                      <p className="text-sm font-semibold text-gray-900">GH₵ {product.price?.toFixed(2)}</p>
+                      <p className="text-sm font-semibold text-gray-900">{moneyLabel(product.price)}</p>
                       {product.compare_at_price && product.compare_at_price > product.price && (
-                        <p className="text-xs text-gray-400 line-through">GH₵ {product.compare_at_price.toFixed(2)}</p>
+                        <p className="text-xs text-gray-400 line-through">{moneyLabel(product.compare_at_price)}</p>
                       )}
                     </div>
                   </div>

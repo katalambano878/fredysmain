@@ -9,6 +9,11 @@ import { useCart } from '@/context/CartContext';
 import { supabase } from '@/lib/supabase';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useRecaptcha } from '@/hooks/useRecaptcha';
+import {
+  addressToShippingData,
+  shippingDataToAddressInput,
+  type AddressLike,
+} from '@/lib/address-map';
 
 export default function CheckoutPage() {
   usePageTitle('Checkout');
@@ -18,9 +23,11 @@ export default function CheckoutPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [checkoutType, setCheckoutType] = useState<'guest' | 'account'>('guest');
-  const [saveAddress, setSaveAddress] = useState(false);
+  const [saveAddress, setSaveAddress] = useState(true);
   const [savePayment, setSavePayment] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [savedAddresses, setSavedAddresses] = useState<AddressLike[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>('new');
   const { getToken, verifying } = useRecaptcha();
 
   const [shippingData, setShippingData] = useState({
@@ -63,14 +70,49 @@ export default function CheckoutPage() {
 
 
 
-  // Check auth and cart
+  async function authFetch(path: string, init?: RequestInit & { json?: unknown }) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('Not signed in');
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${session.access_token}`,
+      ...(init?.json !== undefined ? { 'Content-Type': 'application/json' } : {}),
+    };
+    const res = await fetch(path, {
+      ...init,
+      headers: { ...headers, ...(init?.headers as Record<string, string>) },
+      body: init?.json !== undefined ? JSON.stringify(init.json) : init?.body,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || res.statusText);
+    }
+    if (res.status === 204) return null;
+    return res.json();
+  }
+
+  // Check auth, saved addresses, and cart
   useEffect(() => {
     async function checkUser() {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         setUser(session.user);
         setCheckoutType('account');
-        setShippingData(prev => ({ ...prev, email: session.user.email || '' }));
+        const email = session.user.email || '';
+        setShippingData(prev => ({ ...prev, email }));
+
+        try {
+          const addresses = await authFetch('/api/addresses') as AddressLike[];
+          const list = Array.isArray(addresses) ? addresses : [];
+          setSavedAddresses(list);
+          const preferred = list.find((a) => a.is_default) || list[0];
+          if (preferred) {
+            setSelectedAddressId(preferred.id);
+            setShippingData(addressToShippingData(preferred, email));
+            setSaveAddress(false);
+          }
+        } catch {
+          /* addresses API optional until configured */
+        }
       }
     }
     checkUser();
@@ -251,6 +293,19 @@ export default function CheckoutPage() {
       }
       const order = createResult.order;
 
+      if (user && (saveAddress || savedAddresses.length === 0)) {
+        try {
+          await authFetch('/api/addresses', {
+            method: 'POST',
+            json: shippingDataToAddressInput(shippingData, {
+              is_default: savedAddresses.length === 0 || saveAddress,
+            }),
+          });
+        } catch (addrErr) {
+          console.warn('Could not save address', addrErr);
+        }
+      }
+
       // 3. Handle Payment Redirects or Completion
       if (paymentMethod === 'hubtel' || paymentMethod === 'moolre') {
         try {
@@ -405,6 +460,69 @@ export default function CheckoutPage() {
                   <h2 className="text-xl font-bold text-gray-900 mb-6">Shipping Information</h2>
 
                   <div className="space-y-4">
+                    {user && savedAddresses.length > 0 && (
+                      <div className="space-y-3 pb-4 border-b border-gray-200">
+                        <p className="text-sm font-semibold text-gray-900">Saved addresses</p>
+                        {savedAddresses.map((addr) => (
+                          <label
+                            key={addr.id}
+                            className={`flex items-start gap-3 p-4 border-2 rounded-lg cursor-pointer ${
+                              selectedAddressId === addr.id
+                                ? 'border-emerald-700 bg-emerald-50'
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="savedAddress"
+                              checked={selectedAddressId === addr.id}
+                              onChange={() => {
+                                setSelectedAddressId(addr.id);
+                                setShippingData(
+                                  addressToShippingData(addr, user.email || shippingData.email)
+                                );
+                              }}
+                              className="mt-1 w-5 h-5 text-emerald-700"
+                            />
+                            <div className="text-sm">
+                              <p className="font-semibold text-gray-900">{addr.full_name}</p>
+                              <p className="text-gray-600">
+                                {addr.address_line1}, {addr.city}, {addr.state}
+                              </p>
+                              <p className="text-gray-600">{addr.phone}</p>
+                            </div>
+                          </label>
+                        ))}
+                        <label
+                          className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer ${
+                            selectedAddressId === 'new'
+                              ? 'border-emerald-700 bg-emerald-50'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="savedAddress"
+                            checked={selectedAddressId === 'new'}
+                            onChange={() => {
+                              setSelectedAddressId('new');
+                              setShippingData({
+                                firstName: '',
+                                lastName: '',
+                                email: user.email || shippingData.email,
+                                phone: '',
+                                address: '',
+                                city: '',
+                                region: '',
+                              });
+                            }}
+                            className="w-5 h-5 text-emerald-700"
+                          />
+                          <span className="text-sm font-semibold text-gray-900">Use a new address</span>
+                        </label>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-semibold text-gray-900 mb-2">

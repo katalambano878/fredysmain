@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { moneyLabel } from '@/lib/format-money';
 import ProductSalesStats from './ProductSalesStats';
 
 interface Order {
@@ -438,7 +439,7 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
         <div className="bg-gradient-to-r from-indigo-50 to-emerald-50 border border-indigo-100 rounded-xl px-5 py-4 flex flex-wrap items-center gap-x-8 gap-y-2">
           <div>
             <p className="text-xs uppercase tracking-wide text-gray-500">Total POS revenue</p>
-            <p className="text-2xl font-bold text-gray-900">GH₵ {totalRevenue.toFixed(2)}</p>
+            <p className="text-2xl font-bold text-gray-900">{moneyLabel(totalRevenue)}</p>
           </div>
           <div>
             <p className="text-xs uppercase tracking-wide text-gray-500">Total sales</p>
@@ -677,7 +678,7 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
                     </td>
                     <td className="py-4 px-4 text-gray-700 text-sm whitespace-nowrap">{formatDate(order.created_at)}</td>
                     <td className="py-4 px-4 text-gray-700">{getItemCount(order)}</td>
-                    <td className="py-4 px-4 font-semibold text-gray-900 whitespace-nowrap">GH₵ {order.total?.toFixed(2) || '0.00'}</td>
+                    <td className="py-4 px-4 font-semibold text-gray-900 whitespace-nowrap">{moneyLabel(order.total)}</td>
                     <td className="py-4 px-4 text-sm whitespace-nowrap">
                       <div className="flex flex-col">
                         <span className="text-gray-700">{order.payment_method || 'N/A'}</span>

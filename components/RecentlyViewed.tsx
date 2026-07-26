@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { moneyLabel } from '@/lib/format-money';
 
 interface Product {
   id: string;
@@ -62,11 +63,11 @@ export default function RecentlyViewed() {
                 </h3>
                 <div className="flex items-center space-x-2">
                   <span className="text-lg font-bold text-gray-900">
-                    GH₵{product.price.toFixed(2)}
+                    {moneyLabel(product.price)}
                   </span>
                   {product.originalPrice && (
                     <span className="text-sm text-gray-400 line-through">
-                      GH₵{product.originalPrice.toFixed(2)}
+                      {moneyLabel(product.originalPrice)}
                     </span>
                   )}
                 </div>
