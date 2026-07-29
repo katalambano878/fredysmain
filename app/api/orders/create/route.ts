@@ -82,26 +82,71 @@ export async function POST(req: Request) {
           : '';
 
       let unitPrice = asNumber(product.price);
-      let variantName = raw.variant_name || null;
+      let variantName = raw.variant_name ? String(raw.variant_name) : null;
       let stock = asNumber(product.quantity);
       let resolvedVariantId: string | null = null;
 
+      const { data: productVariants } = await supabaseAdmin
+        .from('product_variants')
+        .select('id, price, quantity, name, option1, option2, option3')
+        .eq('product_id', productId);
+
+      const variants = Array.isArray(productVariants) ? productVariants : [];
+
+      const matchVariantLabel = (label: string, v: any) => {
+        const norm = (s: unknown) => String(s || '').trim().toLowerCase();
+        const want = norm(label);
+        if (!want) return false;
+        const name = norm(v.name);
+        const opt1 = norm(v.option1);
+        const opt2 = norm(v.option2);
+        const opt3 = norm(v.option3);
+        const combos = [
+          name,
+          opt1,
+          opt2,
+          opt3,
+          [opt1, opt2].filter(Boolean).join(' / '),
+          [opt1, opt2, opt3].filter(Boolean).join(' / '),
+          [opt2, opt1].filter(Boolean).join(' / '),
+        ].filter(Boolean);
+        // Also match when cart stored "Color / Age 6" but DB only has "Age 6"
+        if (combos.includes(want)) return true;
+        const tail = want.includes(' / ') ? want.split(' / ').pop()?.trim() : '';
+        return !!(tail && (tail === name || tail === opt1 || tail === opt2));
+      };
+
+      let variant: (typeof variants)[number] | undefined;
       if (UUID_RE.test(variantId)) {
-        const { data: variant } = await supabaseAdmin
-          .from('product_variants')
-          .select('id, price, quantity, name, option1, option2')
-          .eq('id', variantId)
-          .eq('product_id', productId)
-          .maybeSingle();
-        if (variant) {
-          unitPrice = asNumber(variant.price, unitPrice);
-          stock = asNumber(variant.quantity, stock);
-          variantName =
-            variant.name ||
-            [variant.option1, variant.option2].filter(Boolean).join(' / ') ||
-            variantName;
-          resolvedVariantId = variant.id;
-        }
+        variant = variants.find((v) => v.id === variantId);
+      }
+      if (!variant && variantName) {
+        variant = variants.find((v) => matchVariantLabel(variantName!, v));
+      }
+
+      if (variant) {
+        unitPrice = asNumber(variant.price, unitPrice);
+        stock = asNumber(variant.quantity, stock);
+        variantName =
+          variant.name ||
+          [variant.option1, variant.option2].filter(Boolean).join(' / ') ||
+          variantName;
+        resolvedVariantId = variant.id;
+      } else if (variants.length > 0) {
+        // Variant products often have base price 0 — require a resolvable option
+        return NextResponse.json(
+          {
+            error: `Please re-select size/options for ${product.name} and try again.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      if (!(unitPrice > 0)) {
+        return NextResponse.json(
+          { error: `Invalid price for ${product.name}` },
+          { status: 400 }
+        );
       }
 
       const isPreorder = Boolean(raw.is_preorder);
@@ -112,7 +157,7 @@ export async function POST(req: Request) {
         );
       }
 
-      const lineTotal = unitPrice * qty;
+      const lineTotal = Math.round(unitPrice * qty * 100) / 100;
       subtotal += lineTotal;
 
       const meta = {
@@ -139,7 +184,10 @@ export async function POST(req: Request) {
     const shippingTotal = Math.min(500, Math.max(0, asNumber(orderData.shipping_total, 0)));
     const taxTotal = Math.min(subtotal, Math.max(0, asNumber(orderData.tax_total, 0)));
     const discountTotal = Math.min(subtotal, Math.max(0, asNumber(orderData.discount_total, 0)));
-    const total = Math.max(0, subtotal + shippingTotal + taxTotal - discountTotal);
+    const total = Math.round(Math.max(0, subtotal + shippingTotal + taxTotal - discountTotal) * 100) / 100;
+    if (!(total > 0)) {
+      return NextResponse.json({ error: 'Invalid order total' }, { status: 400 });
+    }
 
     const orderNumber =
       typeof orderData.order_number === 'string' && /^ORD-[\w-]+$/.test(orderData.order_number)

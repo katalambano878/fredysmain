@@ -9,6 +9,8 @@ export type CartItem = {
     image: string;
     quantity: number;
     variant?: string;
+    /** product_variants.id when a size/color option was selected */
+    variantId?: string;
     slug: string;
     maxStock: number;
     moq?: number; // Minimum Order Quantity
@@ -98,7 +100,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const addToCart = (newItem: CartItem) => {
         setCart((prevCart) => {
             const existingItemIndex = prevCart.findIndex(
-                (item) => item.id === newItem.id && item.variant === newItem.variant
+                (item) =>
+                    item.id === newItem.id &&
+                    item.variant === newItem.variant &&
+                    (item.variantId || '') === (newItem.variantId || '')
             );
 
             let next: CartItem[];

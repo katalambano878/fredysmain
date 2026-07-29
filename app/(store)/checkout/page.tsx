@@ -246,6 +246,7 @@ export default function CheckoutPage() {
             slug: item.slug,
             preorder_shipping: prodMeta?.preorder_shipping || null,
             is_preorder: !!item.isPreorder,
+            ...(item.variantId ? { variant_id: item.variantId } : {}),
           }
         });
       }
