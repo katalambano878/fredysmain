@@ -3,8 +3,9 @@
 **Shape:** A — shimmed `@supabase/supabase-js` → app `/rest/v1`, `/auth/v1`, `/storage/v1` + `DATABASE_URL`  
 **Repo:** `katalambano878/fredysmain`  
 **Branch:** `staging/plain-postgres`  
-**Coolify:** `frebys-app` (`k11c9rdumeb14n5algp2db9t`), `frebys-staging` (`qu3fka2mbcb22qrccy989aca`)  
+**Coolify:** `frebys-app` (`k11c9rdumeb14n5algp2db9t`) — staging app removed Jul 2026  
 **Production:** https://www.frebysfashion.com  
+**Storage host path:** `/data/coolify/frebys/storage`  
 
 See also: [`STORE_HARDENING_PLAYBOOK.md`](./STORE_HARDENING_PLAYBOOK.md).
 
@@ -48,3 +49,4 @@ curl -s "$BASE/rest/v1/site_settings?select=key&limit=1" \
 - Admin server paths use `lib/supabase-admin` → compat when `DATABASE_URL` is set.
 - Coolify currently uses **nixpacks**; repo also has a `Dockerfile` (standalone + `.next/cache` ownership) if you switch build pack.
 - Storage serves from disk under `STORAGE_ROOT` via `/storage/v1/object/...`.
+- Batch-compress existing objects with `scripts/compress-storage-imagemagick.sh`; new uploads go through `lib/image-compress.ts`.

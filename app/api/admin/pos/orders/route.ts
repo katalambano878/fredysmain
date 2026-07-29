@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { isPlainPostgres } from '@/lib/db/mode';
 
 function getAccessToken(request: Request): string | null {
   const authHeader = request.headers.get('authorization');
@@ -26,7 +27,7 @@ function getAccessToken(request: Request): string | null {
 }
 
 async function requireAdminOrStaff(request: Request): Promise<{ error: NextResponse } | { userId: string }> {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!isPlainPostgres() && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return { error: NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 }) };
   }
   const token = getAccessToken(request);

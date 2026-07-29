@@ -137,7 +137,10 @@ export async function POST(req: Request) {
         const requestUrl = new URL(req.url);
         const publicBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || requestUrl.origin).replace(/\/+$/, '');
 
-        const defaultRedirectUrl = `${publicBaseUrl}/order-success?order=${orderRef}&payment_success=true`;
+        const successEmail = encodeURIComponent(
+            String(customerEmail || order.email || '').trim().toLowerCase()
+        );
+        const defaultRedirectUrl = `${publicBaseUrl}/order-success?order=${encodeURIComponent(orderRef)}&payment_success=true${successEmail ? `&email=${successEmail}` : ''}`;
         const allowedPrefixes = ['https://'];
         const safeRedirectUrl =
             typeof redirectUrl === 'string' &&

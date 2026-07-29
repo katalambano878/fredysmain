@@ -98,41 +98,51 @@ export async function middleware(request: NextRequest) {
       return response;
     }
 
-    if (supabaseServiceKey) {
-      try {
-        const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-          auth: { autoRefreshToken: false, persistSession: false },
-        });
+    // Legacy hosted Supabase path — fail closed if service key missing or auth fails
+    if (!supabaseServiceKey) {
+      const loginUrl = new URL('/admin/login', request.url);
+      loginUrl.searchParams.set('redirect', pathname);
+      loginUrl.searchParams.set('error', 'misconfigured');
+      return NextResponse.redirect(loginUrl);
+    }
 
-        const {
-          data: { user },
-          error,
-        } = await supabase.auth.getUser(token);
+    try {
+      const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
 
-        if (error || !user) {
-          const loginUrl = new URL('/admin/login', request.url);
-          loginUrl.searchParams.set('redirect', pathname);
-          loginUrl.searchParams.set('error', 'session_expired');
-          return NextResponse.redirect(loginUrl);
-        }
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser(token);
 
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single();
-
-        if (!profile || (profile.role !== 'admin' && profile.role !== 'staff')) {
-          const loginUrl = new URL('/admin/login', request.url);
-          loginUrl.searchParams.set('error', 'unauthorized');
-          return NextResponse.redirect(loginUrl);
-        }
-
-        response.headers.set('x-user-id', user.id);
-        response.headers.set('x-user-role', profile.role);
-      } catch (err) {
-        console.error('[Middleware] Auth check error:', err);
+      if (error || !user) {
+        const loginUrl = new URL('/admin/login', request.url);
+        loginUrl.searchParams.set('redirect', pathname);
+        loginUrl.searchParams.set('error', 'session_expired');
+        return NextResponse.redirect(loginUrl);
       }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (!profile || (profile.role !== 'admin' && profile.role !== 'staff')) {
+        const loginUrl = new URL('/admin/login', request.url);
+        loginUrl.searchParams.set('error', 'unauthorized');
+        return NextResponse.redirect(loginUrl);
+      }
+
+      response.headers.set('x-user-id', user.id);
+      response.headers.set('x-user-role', profile.role);
+    } catch (err) {
+      console.error('[Middleware] Auth check error:', err);
+      const loginUrl = new URL('/admin/login', request.url);
+      loginUrl.searchParams.set('redirect', pathname);
+      loginUrl.searchParams.set('error', 'session_expired');
+      return NextResponse.redirect(loginUrl);
     }
   }
 

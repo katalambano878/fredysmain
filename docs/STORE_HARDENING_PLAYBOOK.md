@@ -143,18 +143,34 @@ USER nextjs
 
 Static files under `public/` still work; Next Image just skips optimization when `unoptimized: true`.
 
-### Uploads volume (Mamator pattern)
+### Uploads volume
 
-- Host path: `/var/www/mamator/uploads` (adapt slug).
-- Coolify mount into the app container; public URL `/uploads/...`.
-- After DB restore, copy restore tree: `sudo cp -a ~/mamator-restore/uploads/. /var/www/mamator/uploads/` then `chown 1000:1000` (or the container UID).
-- Verify: `curl -sI https://<host>/uploads/<known-file>` → 200 + non-zero size.
+- **Mamator:** host `/var/www/mamator/uploads` → `/uploads/...`
+- **Frebys (Shape A storage shim):** host `/data/coolify/frebys/storage` → container `STORAGE_ROOT` → public `/storage/v1/object/public/...`
+- After DB restore, copy restore tree then `chown` to the container UID.
+- Verify: `curl -sI https://<host>/storage/v1/object/public/<bucket>/<file>` → 200 + non-zero size.
 
 ---
 
-## 3–15. Quality sections
+## 3. Performance: images
 
-Apply per store: image compression (§3), storefront UX (§4), shop grid (§5), PDP (§6), checkout addresses (§7), order actions (§8), newsletter (§9), payments (§10), admin `money()` (§10a), customers aggregation (§11), product SEO (§12), blog (§13), admin reliability (§14), brand/ops copy (§15).
+1. **Batch compress production storage** on VPS (`STORAGE_ROOT` / uploads). Frebys used ImageMagick in place (`scripts/compress-storage-imagemagick.sh`) — kept filenames so DB URLs stayed valid; wrote `.meta.json` `contentType: image/jpeg` when bytes were re-encoded. Result example: **~1.1 GB → ~159 MB**.
+2. **Compress on upload** via `lib/image-compress.ts` (sharp) in `app/api/admin/upload`.
+3. Prefer same-origin placeholders (`/frebys-logo.png`) over `via.placeholder.com`.
+4. Product grids: use compact cards + `sizes="(max-width: 640px) 50vw, …"` so mobile does not fetch desktop-width images.
+
+---
+
+## 4–5. Storefront UX + shop grid (Frebys notes)
+
+| Change | Intent |
+|--------|--------|
+| Product cards smaller | Less padding/type; `aspect-[3/4]`; lighter shadow/hover |
+| Mobile **2×2** grids | Home + shop: `grid-cols-2 lg:grid-cols-3 xl:grid-cols-4` |
+| Shop freeze | Do **not** put `categories` array identity in product-fetch `useEffect` deps — use a ref; only full skeleton when `products.length === 0`; tighter infinite-scroll `rootMargin` |
+| Homepage product grid | Prefer plain CSS grid over staggered `AnimatedGrid` (many `setTimeout` + `setState` calls jank the main thread) |
+
+Also apply per store: storefront UX (§4 general), PDP (§6), checkout addresses (§7), order actions (§8), newsletter (§9), payments (§10), admin `money()` (§10a), customers aggregation (§11), product SEO (§12), blog (§13), admin reliability (§14), brand/ops copy (§15).
 
 ---
 
@@ -261,29 +277,32 @@ If a store was **never** on Supabase, skip Shape A cutover and still apply §2�
 | Item | Value |
 |------|--------|
 | Repo | `katalambano878/fredysmain` |
-| Coolify app | `frebys-app` / `frebys-staging` |
-| UUID prefix | `k11c9rdumeb14n5algp2db9t` / `qu3fka2mbcb22qrccy989aca` |
+| Coolify app | `frebys-app` only (**staging deleted** Jul 2026) |
+| UUID prefix | `k11c9rdumeb14n5algp2db9t` |
 | Production | https://www.frebysfashion.com |
 | Shape | A — shimmed Supabase-js → plain PG |
-| Storage | `STORAGE_ROOT` → `/storage/v1/...` |
-| Branch | `staging/plain-postgres` |
+| Storage | Host `/data/coolify/frebys/storage` → `/storage/v1/...` |
+| Branch | `staging/plain-postgres` (prod Coolify tracks this) |
 | Payments | Moolre + Hubtel |
-| Notable (Jul 2026) | SW v2.5 → money() → addresses/checkout → order actions → newsletter → blog CRUD → Content-Range `*/N` → Dockerfile standalone ready |
+| Notable (Jul 2026) | SW v2.5 → money() → addresses/checkout → order actions → newsletter → blog CRUD → Content-Range `*/N` → Dockerfile standalone ready → **storage compress ~1.1GB→159MB** → compact 2-col mobile product grids → shop fetch freeze fix |
 
 Reusable artifacts:
 
-- `lib/format-money.ts`, `lib/address-map.ts`, `lib/product-seo.ts`
+- `lib/format-money.ts`, `lib/address-map.ts`, `lib/product-seo.ts`, `lib/image-compress.ts`
 - `lib/data/addresses.ts` + `/api/addresses`
 - `app/(store)/account/invoice/[id]`
 - `public/service-worker.js` (`sw-v2.5`)
 - `app/error.tsx` + `app/admin/error.tsx`
-- `app/api/newsletter/subscribe`
+- `app/api/newsletter/subscribe` + compress-on-upload in `app/api/admin/upload`
+- `scripts/compress-storage-imagemagick.sh` (VPS batch) / `scripts/compress-storage-images.mjs`
 - Admin customers live aggregation
+- Compact `ProductCard` + `grid-cols-2` home/shop
 
 ```bash
 BASE=https://www.frebysfashion.com
 ssh big-vps "sudo docker ps --format '{{.Image}}' | grep k11c9r"
 curl -s "$BASE/service-worker.js" | head -n 3
+sudo du -sh /data/coolify/frebys/storage
 ```
 
 ### Affordable Perfumes GH

@@ -71,16 +71,20 @@ export async function POST(req: Request) {
         console.log('[Callback] Data keys:', body.data ? Object.keys(body.data).join(', ') : 'no data object');
 
         // ============================================================
-        // SECURITY: Verify callback secret FIRST (mandatory)
+        // SECURITY: Verify callback secret FIRST (mandatory in production)
         // ============================================================
         const expectedSecret = process.env.MOOLRE_CALLBACK_SECRET;
-        if (expectedSecret) {
-            if (!body.secret || body.secret !== expectedSecret) {
-                console.error('[Callback] Secret mismatch or missing! Rejecting callback.');
-                return NextResponse.json({ success: false, message: 'Invalid callback signature' }, { status: 403 });
-            }
-        } else {
-            console.warn('[Callback] WARNING: MOOLRE_CALLBACK_SECRET not configured. Callback origin cannot be verified.');
+        const isProd = process.env.NODE_ENV === 'production';
+        if (!expectedSecret) {
+            console.error('[Callback] MOOLRE_CALLBACK_SECRET not configured — rejecting.');
+            return NextResponse.json(
+                { success: false, message: 'Callback verification not configured' },
+                { status: isProd ? 503 : 403 }
+            );
+        }
+        if (!body.secret || body.secret !== expectedSecret) {
+            console.error('[Callback] Secret mismatch or missing! Rejecting callback.');
+            return NextResponse.json({ success: false, message: 'Invalid callback signature' }, { status: 403 });
         }
 
         // ============================================================

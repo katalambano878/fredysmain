@@ -1,8 +1,5 @@
 import { MetadataRoute } from 'next';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.frebysfashion.com";
@@ -27,9 +24,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let blogPages: MetadataRoute.Sitemap = [];
 
   try {
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    const { data: products } = await supabase
+    const { data: products } = await supabaseAdmin
       .from('products')
       .select('slug, updated_at')
       .eq('status', 'active');
@@ -43,7 +38,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       }));
     }
 
-    const { data: categories } = await supabase
+    const { data: categories } = await supabaseAdmin
       .from('categories')
       .select('slug, updated_at')
       .eq('status', 'active');
@@ -57,7 +52,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       }));
     }
 
-    const { data: posts } = await supabase
+    const { data: posts } = await supabaseAdmin
       .from('blog_posts')
       .select('slug, updated_at')
       .eq('status', 'published');

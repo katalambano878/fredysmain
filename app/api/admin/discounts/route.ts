@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { requireAdminSession } from '@/lib/admin-route-auth';
 
 /**
  * GET — list all products that currently have a discount
  * (compare_at_price is set and greater than price)
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authErr = await requireAdminSession(request);
+  if (authErr) return authErr;
+
   const { data, error } = await supabaseAdmin
     .from('products')
     .select('id, name, price, compare_at_price, status, product_images(url)')
@@ -39,6 +43,9 @@ export async function GET() {
  * - If a product already has a discount, uses compare_at_price as the base
  */
 export async function POST(req: NextRequest) {
+  const authErr = await requireAdminSession(req);
+  if (authErr) return authErr;
+
   try {
     const { product_ids, type, value } = await req.json();
 
@@ -112,6 +119,9 @@ export async function POST(req: NextRequest) {
  * Restores price from compare_at_price, then clears compare_at_price.
  */
 export async function DELETE(req: NextRequest) {
+  const authErr = await requireAdminSession(req);
+  if (authErr) return authErr;
+
   try {
     const body = await req.json();
     const removeAll = body.all === true;

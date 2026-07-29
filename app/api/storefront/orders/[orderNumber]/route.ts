@@ -1,14 +1,22 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 
+/**
+ * GET /api/storefront/orders/[orderNumber]?email=
+ * Requires email match to prevent order PII enumeration.
+ */
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ orderNumber: string }> }
 ) {
   const { orderNumber } = await params;
+  const email = new URL(request.url).searchParams.get('email')?.trim().toLowerCase() || '';
 
   if (!orderNumber) {
     return NextResponse.json({ error: 'Order number required' }, { status: 400 });
+  }
+  if (!email || !email.includes('@')) {
+    return NextResponse.json({ error: 'Email is required' }, { status: 400 });
   }
 
   try {
@@ -16,7 +24,8 @@ export async function GET(
       .from('orders')
       .select('*, order_items(*)')
       .eq('order_number', orderNumber)
-      .single();
+      .ilike('email', email)
+      .maybeSingle();
 
     if (error || !order) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });

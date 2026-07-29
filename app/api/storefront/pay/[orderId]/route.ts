@@ -2,19 +2,29 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ orderId: string }> }
 ) {
   const { orderId } = await params;
 
   try {
-    // Fetch order (by UUID or order_number)
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId);
-    const { data: order, error: orderError } = await supabaseAdmin
+
+    let orderQuery = supabaseAdmin
       .from('orders')
-      .select('*, order_items(id, product_id, product_name, variant_name, quantity, unit_price, metadata, is_preorder)')
-      .or(isUUID ? `id.eq.${orderId}` : `order_number.eq.${orderId}`)
-      .single();
+      .select('*, order_items(id, product_id, product_name, variant_name, quantity, unit_price, metadata, is_preorder)');
+
+    if (isUUID) {
+      orderQuery = orderQuery.eq('id', orderId);
+    } else {
+      const email = new URL(request.url).searchParams.get('email')?.trim().toLowerCase() || '';
+      if (!email || !email.includes('@')) {
+        return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+      }
+      orderQuery = orderQuery.eq('order_number', orderId).ilike('email', email);
+    }
+
+    const { data: order, error: orderError } = await orderQuery.single();
 
     if (orderError || !order) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });

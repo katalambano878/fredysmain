@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { isPlainPostgres } from '@/lib/db/mode';
 
 export function getAdminAccessToken(request: Request): string | null {
   const authHeader = request.headers.get('authorization');
@@ -26,7 +27,7 @@ export function getAdminAccessToken(request: Request): string | null {
 }
 
 export async function requireAdminSession(request: Request): Promise<NextResponse | null> {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!isPlainPostgres() && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 });
   }
   const token = getAdminAccessToken(request);

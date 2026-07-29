@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { requireAdminSession } from '@/lib/admin-route-auth';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -22,7 +23,10 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ data }, { status: 201 });
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const authErr = await requireAdminSession(req);
+  if (authErr) return authErr;
+
   const { data, error } = await supabaseAdmin
     .from('support_feedback')
     .select('*')

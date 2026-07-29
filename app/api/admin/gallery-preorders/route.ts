@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { requireAdminSession } from '@/lib/admin-route-auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authErr = await requireAdminSession(request);
+  if (authErr) return authErr;
+
   const { data, error } = await supabaseAdmin
     .from('gallery_preorders')
     .select('*')
@@ -14,6 +18,9 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
+  const authErr = await requireAdminSession(req);
+  if (authErr) return authErr;
+
   const { id, status } = await req.json();
   if (!id || !status) {
     return NextResponse.json({ error: 'id and status are required' }, { status: 400 });

@@ -6,11 +6,10 @@ import { sendPaymentLink } from '@/lib/notifications';
 // for orders that haven't been paid within 15 minutes
 export async function GET(request: Request) {
   try {
-    // Verify cron secret to prevent unauthorized access
+    // Verify cron secret (required — fail closed)
     const authHeader = request.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
-    
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

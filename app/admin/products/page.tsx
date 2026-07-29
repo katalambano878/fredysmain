@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { moneyLabel, money } from '@/lib/format-money';
 
-const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/300?text=No+Image';
+const PLACEHOLDER_IMAGE = '/frebys-logo.png';
 
 export default function ProductsPage() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');

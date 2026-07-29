@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { requireAdminSession } from '@/lib/admin-route-auth';
 
 export async function GET(req: NextRequest) {
+  const authErr = await requireAdminSession(req);
+  if (authErr) return authErr;
+
   const { searchParams } = new URL(req.url);
   const days = parseInt(searchParams.get('days') || '30');
   const since = new Date(Date.now() - days * 86400000).toISOString();

@@ -121,7 +121,7 @@ export default function OrderHistory() {
         const image =
           images?.[0]?.url ||
           item.image ||
-          'https://via.placeholder.com/150';
+          '/frebys-logo.png';
 
         addToCart({
           id: product.id,

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { requireAdminSession } from '@/lib/admin-route-auth';
 
 export async function GET(req: NextRequest) {
+  const authErr = await requireAdminSession(req);
+  if (authErr) return authErr;
+
   const { searchParams } = new URL(req.url);
   const page = parseInt(searchParams.get('page') || '1');
   const limit = parseInt(searchParams.get('limit') || '20');
@@ -32,6 +36,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const authErr = await requireAdminSession(req);
+  if (authErr) return authErr;
+
   const body = await req.json();
   const { id, ...updates } = body;
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });

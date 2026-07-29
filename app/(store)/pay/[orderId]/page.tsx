@@ -42,7 +42,9 @@ export default function PaymentPage() {
 
         // If already paid, redirect to success page
         if (data.order.payment_status === 'paid') {
-          router.push(`/order-success?order=${data.order.order_number}`);
+          router.push(
+            `/order-success?order=${encodeURIComponent(data.order.order_number)}&email=${encodeURIComponent(String(data.order.email || '').toLowerCase())}`
+          );
           return;
         }
 

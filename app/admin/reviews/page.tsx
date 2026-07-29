@@ -40,7 +40,7 @@ export default function AdminReviewsPage() {
           },
           product: {
             name: r.products?.name || 'Unknown Product',
-            image: r.products?.product_images?.[0]?.url || 'https://via.placeholder.com/150'
+            image: r.products?.product_images?.[0]?.url || '/frebys-logo.png'
           },
           rating: r.rating,
           title: r.title,

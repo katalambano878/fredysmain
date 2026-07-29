@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { isPlainPostgres } from '@/lib/db/mode';
 
 const SEARCH_STOP_WORDS = new Set([
   'the',
@@ -25,7 +26,7 @@ const SEARCH_STOP_WORDS = new Set([
  * Query params: search, categorySlugs (comma-separated or 'all'), priceMin, priceMax, rating, sortBy, page, limit
  */
 export async function GET(request: Request) {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!isPlainPostgres() && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 });
   }
 

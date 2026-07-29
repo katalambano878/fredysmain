@@ -4,11 +4,11 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState, useEffect } from 'react';
 
-async function secureFetchOrder(orderNumber: string) {
+async function secureFetchOrder(orderNumber: string, email: string) {
   const res = await fetch('/api/orders/lookup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ orderId: orderNumber, includeItems: true }),
+    body: JSON.stringify({ orderId: orderNumber, email, includeItems: true }),
   });
   if (!res.ok) return null;
   const { order } = await res.json();
@@ -18,6 +18,7 @@ async function secureFetchOrder(orderNumber: string) {
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
   const orderNumber = searchParams.get('order');
+  const emailParam = searchParams.get('email');
   const paymentSuccess = searchParams.get('payment_success');
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -26,13 +27,13 @@ function OrderSuccessContent() {
 
   useEffect(() => {
     async function fetchOrder() {
-      if (!orderNumber) {
+      if (!orderNumber || !emailParam) {
         setLoading(false);
         return;
       }
 
       try {
-        const orderData = await secureFetchOrder(orderNumber);
+        const orderData = await secureFetchOrder(orderNumber, emailParam);
         if (!orderData) throw new Error('Not found');
         setOrder(orderData);
 
@@ -46,14 +47,15 @@ function OrderSuccessContent() {
       }
     }
     fetchOrder();
-  }, [orderNumber]);
+  }, [orderNumber, emailParam]);
 
   const verifyPayment = async (orderNum: string, initialOrder: any) => {
     setVerifying(true);
     
     await new Promise(resolve => setTimeout(resolve, 3000));
     
-    const refreshed = await secureFetchOrder(orderNum);
+    const lookupEmail = initialOrder?.email || emailParam || '';
+    const refreshed = await secureFetchOrder(orderNum, lookupEmail);
     
     if (refreshed?.payment_status === 'paid') {
       setOrder(refreshed);
@@ -82,7 +84,7 @@ function OrderSuccessContent() {
       const result = await res.json();
       
       if (result.success && result.payment_status === 'paid') {
-        const updated = await secureFetchOrder(orderNum);
+        const updated = await secureFetchOrder(orderNum, lookupEmail);
         if (updated) setOrder(updated);
       }
     } catch (err) {
@@ -225,7 +227,7 @@ function OrderSuccessContent() {
                   <div key={item.id} className="flex items-center space-x-4">
                     <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200">
                       <img
-                        src={item.metadata?.image || 'https://via.placeholder.com/150'}
+                        src={item.metadata?.image || '/frebys-logo.png'}
                         alt={item.product_name}
                         className="w-full h-full object-cover object-center"
                       />

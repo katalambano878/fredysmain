@@ -665,7 +665,7 @@ export async function createChatOrder(
           email: process.env.MOOLRE_MERCHANT_EMAIL || 'hello@frebysfashion.com',
           externalref: uniqueRef,
           callback: `${baseUrl}/api/payment/moolre/callback`,
-          redirect: `${baseUrl}/order-success?order=${orderNumber}&payment_success=true`,
+          redirect: `${baseUrl}/order-success?order=${encodeURIComponent(orderNumber)}&payment_success=true&email=${encodeURIComponent(String(sanitizedShipping.email || '').toLowerCase())}`,
           reusable: '0',
           currency: 'GHS',
           accountnumber: moolreAccountNumber,
