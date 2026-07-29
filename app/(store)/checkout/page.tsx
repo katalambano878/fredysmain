@@ -18,7 +18,7 @@ import {
 export default function CheckoutPage() {
   usePageTitle('Checkout');
   const router = useRouter();
-  const { cart, subtotal: cartSubtotal, clearCart } = useCart();
+  const { cart, subtotal: cartSubtotal, clearCart, isHydrated } = useCart();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -363,6 +363,15 @@ export default function CheckoutPage() {
       setIsLoading(false);
     }
   };
+
+  // Wait for localStorage hydration — otherwise Buy Now / refresh flash an empty cart
+  if (!isHydrated) {
+    return (
+      <main className="min-h-screen bg-gray-50 py-20 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-emerald-700 border-t-transparent rounded-full animate-spin" />
+      </main>
+    );
+  }
 
   if (cart.length === 0 && !isLoading) {
     return (

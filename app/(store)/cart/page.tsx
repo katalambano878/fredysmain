@@ -12,7 +12,7 @@ import { HERO_IMAGES } from '@/lib/hero-images';
 
 export default function CartPage() {
   usePageTitle('Shopping Cart');
-  const { cart: cartItems, removeFromCart, updateQuantity, subtotal, addToCart } = useCart();
+  const { cart: cartItems, removeFromCart, updateQuantity, subtotal, addToCart, isHydrated } = useCart();
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
   const [savedItems, setSavedItems] = useState<any[]>([]);
 

@@ -240,7 +240,8 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
 
   const handleBuyNow = () => {
     handleAddToCart();
-    window.location.href = '/checkout';
+    // Cart is persisted synchronously in CartContext before this navigation
+    window.location.assign('/checkout');
   };
 
   if (loading) {
