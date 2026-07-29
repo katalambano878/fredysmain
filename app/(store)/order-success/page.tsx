@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState, useEffect } from 'react';
+import { useCart } from '@/context/CartContext';
 
 async function secureFetchOrder(orderNumber: string, email: string) {
   const res = await fetch('/api/orders/lookup', {
@@ -24,6 +25,14 @@ function OrderSuccessContent() {
   const [loading, setLoading] = useState(true);
   const [showConfetti, setShowConfetti] = useState(true);
   const [verifying, setVerifying] = useState(false);
+  const { clearCart } = useCart();
+
+  useEffect(() => {
+    // Clear cart once customer lands on success (paid or gateway return)
+    if (orderNumber && (paymentSuccess === 'true' || order?.payment_status === 'paid')) {
+      clearCart();
+    }
+  }, [orderNumber, paymentSuccess, order?.payment_status, clearCart]);
 
   useEffect(() => {
     async function fetchOrder() {

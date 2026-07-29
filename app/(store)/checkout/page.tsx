@@ -329,7 +329,7 @@ export default function CheckoutPage() {
             throw new Error(paymentResult.message || 'Payment initialization failed');
           }
 
-          clearCart();
+          // Keep cart until paid — if Hubtel cancels/back-button, customer can retry
           window.location.href = paymentResult.url;
           return;
 
@@ -365,7 +365,7 @@ export default function CheckoutPage() {
     }
   };
 
-  // Wait for localStorage hydration — otherwise Buy Now / refresh flash an empty cart
+  // Wait for storage hydration — otherwise Buy Now / refresh flash an empty cart
   if (!isHydrated) {
     return (
       <main className="min-h-screen bg-gray-50 py-20 flex items-center justify-center">
@@ -382,10 +382,18 @@ export default function CheckoutPage() {
             <i className="ri-shopping-cart-line text-4xl text-gray-300"></i>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Your cart is empty</h1>
-          <p className="text-gray-600 mb-8">Add some items to start the checkout process.</p>
-          <Link href="/shop" className="inline-block bg-emerald-700 text-white px-8 py-3 rounded-lg font-semibold hover:bg-emerald-800 transition-colors">
-            Return to Shop
-          </Link>
+          <p className="text-gray-600 mb-4">Add some items to start the checkout process.</p>
+          <p className="text-sm text-gray-500 mb-8">
+            If you just clicked Buy Now, go back to the product, choose a size, and try again.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href="/shop" className="inline-block bg-emerald-700 text-white px-8 py-3 rounded-lg font-semibold hover:bg-emerald-800 transition-colors">
+              Return to Shop
+            </Link>
+            <Link href="/cart" className="inline-block border border-gray-300 text-gray-800 px-8 py-3 rounded-lg font-semibold hover:bg-gray-50 transition-colors">
+              View Cart
+            </Link>
+          </div>
         </div>
       </main>
     );

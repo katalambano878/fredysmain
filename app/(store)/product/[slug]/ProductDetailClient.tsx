@@ -8,7 +8,7 @@ import { cachedQuery } from '@/lib/query-cache';
 import ProductCard from '@/components/ProductCard';
 import ProductReviews from '@/components/ProductReviews';
 import { StructuredData, generateProductSchema, generateBreadcrumbSchema } from '@/components/SEOHead';
-import { notFound } from 'next/navigation';
+import { notFound, useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { usePageTitle } from '@/hooks/usePageTitle';
 
@@ -41,6 +41,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
 
   const { addToCart } = useCart();
+  const router = useRouter();
 
   useEffect(() => {
     async function fetchProduct() {
@@ -241,8 +242,8 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
 
   const handleBuyNow = () => {
     handleAddToCart();
-    // Cart is persisted synchronously in CartContext before this navigation
-    window.location.assign('/checkout');
+    // Soft navigate so in-memory cart is kept; CartContext also persists sync to storage
+    router.push('/checkout');
   };
 
   if (loading) {
