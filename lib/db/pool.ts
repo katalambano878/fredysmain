@@ -38,11 +38,21 @@ export function getPool(): Pool {
     connectionString,
     max: Number(process.env.PG_POOL_MAX || 10),
     idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS || 10_000),
     // Self-hosted Postgres on the same host / private network: TLS optional.
     ssl:
       process.env.PGSSL === "require"
         ? { rejectUnauthorized: false }
         : undefined,
+  });
+  _pool.on("connect", (client) => {
+    const ms = Math.max(
+      1000,
+      Math.min(120_000, Number(process.env.PG_STATEMENT_TIMEOUT_MS || 30_000) || 30_000)
+    );
+    client.query(`SET statement_timeout TO '${ms}ms'`).catch(() => {
+      /* non-fatal */
+    });
   });
   return _pool;
 }

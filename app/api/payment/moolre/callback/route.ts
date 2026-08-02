@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { sendOrderConfirmation } from '@/lib/notifications';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
+import {
+    markCallbackProcessed,
+    recordCallbackEvent,
+} from '@/lib/db/payment-records';
 
 /**
  * Moolre Callback Payload Structure (from their actual API):
@@ -126,6 +130,27 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, message: 'Missing order reference' }, { status: 400 });
         }
 
+        const callbackEvent = await recordCallbackEvent({
+            gateway: 'moolre',
+            eventType: String(body.message || body.code || 'callback'),
+            externalEventId: String(moolreReference || ''),
+            internalReference: rawExternalRef || null,
+            gatewayReference: String(moolreReference || ''),
+            orderNumber: merchantOrderRef,
+            payload: {
+                status: apiStatus,
+                txtstatus: txStatus,
+                amount: data.amount || body.amount,
+                externalref: rawExternalRef,
+                transactionid: data.transactionid,
+            },
+            signatureStatus: 'valid', // secret already validated above when configured
+        });
+
+        if (callbackEvent.alreadyProcessed) {
+            return NextResponse.json({ success: true, message: 'Callback already processed' });
+        }
+
         const apiOk = (apiStatus === 1 || apiStatus === '1');
         const txOk = (txStatus === 1 || txStatus === '1');
         const isSuccess = (apiOk || txOk) && !messageStr.includes('fail') && !messageStr.includes('error');
@@ -141,11 +166,13 @@ export async function POST(req: Request) {
 
             if (fetchError || !existingOrder) {
                 console.error('[Callback] Order not found:', merchantOrderRef);
+                await markCallbackProcessed(callbackEvent.eventId, 'failed', 'Order not found');
                 return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
             }
 
             if (existingOrder.payment_status === 'paid') {
                 console.log('[Callback] Order already paid, skipping:', merchantOrderRef);
+                await markCallbackProcessed(callbackEvent.eventId, 'ignored', 'Order already paid');
                 return NextResponse.json({ success: true, message: 'Order already processed' });
             }
 
@@ -170,13 +197,17 @@ export async function POST(req: Request) {
 
             if (updateError) {
                 console.error('[Callback] RPC Error:', updateError.message);
+                await markCallbackProcessed(callbackEvent.eventId, 'failed', updateError.message);
                 return NextResponse.json({ success: false, message: 'Database update failed' }, { status: 500 });
             }
 
             if (!orderJson) {
                 console.error('[Callback] Order not found after RPC:', merchantOrderRef);
+                await markCallbackProcessed(callbackEvent.eventId, 'failed', 'Order not found after RPC');
                 return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
             }
+
+            await markCallbackProcessed(callbackEvent.eventId, 'processed');
 
             console.log('[Callback] Order updated! ID:', orderJson.id, '| Status:', orderJson.status);
 

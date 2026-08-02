@@ -7,6 +7,10 @@ import {
     isHubtelPaid,
     stripHubtelReferenceSuffix,
 } from '@/lib/hubtel';
+import {
+    markCallbackProcessed,
+    recordCallbackEvent,
+} from '@/lib/db/payment-records';
 
 /**
  * Hubtel Online Checkout callback handler.
@@ -66,6 +70,27 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, message: 'Missing client reference' }, { status: 400 });
         }
 
+        const callbackEvent = await recordCallbackEvent({
+            gateway: 'hubtel',
+            eventType: String(topStatus || responseCode || 'callback'),
+            externalEventId: checkoutId || null,
+            internalReference: rawClientReference || null,
+            gatewayReference: checkoutId || null,
+            orderNumber: merchantOrderRef,
+            payload: {
+                ResponseCode: responseCode,
+                Status: topStatus,
+                ClientReference: rawClientReference,
+                CheckoutId: checkoutId,
+                Amount: callbackAmount,
+            },
+            signatureStatus: 'unchecked',
+        });
+
+        if (callbackEvent.alreadyProcessed) {
+            return NextResponse.json({ success: true, message: 'Callback already processed' });
+        }
+
         const innerStatus = String(data.Status ?? topStatus ?? '').toLowerCase();
         const looksSuccessful =
             isHubtelPaid(String(topStatus || ''), responseCode) || isHubtelPaid(innerStatus, responseCode);
@@ -78,12 +103,14 @@ export async function POST(req: Request) {
 
         if (fetchError || !existingOrder) {
             console.error('[Hubtel Callback] Order not found:', merchantOrderRef);
+            await markCallbackProcessed(callbackEvent.eventId, 'failed', 'Order not found');
             return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
         }
 
         const expectedAmount = Number(existingOrder.total) || 0;
 
         if (existingOrder.payment_status === 'paid') {
+            await markCallbackProcessed(callbackEvent.eventId, 'ignored', 'Order already paid');
             return NextResponse.json({ success: true, message: 'Order already processed' });
         }
 
@@ -149,6 +176,7 @@ export async function POST(req: Request) {
 
         if (updateError) {
             console.error('[Hubtel Callback] RPC error:', updateError.message);
+            await markCallbackProcessed(callbackEvent.eventId, 'failed', updateError.message);
             return NextResponse.json(
                 { success: false, message: 'Database update failed' },
                 { status: 500 },
@@ -156,8 +184,11 @@ export async function POST(req: Request) {
         }
 
         if (!orderJson) {
+            await markCallbackProcessed(callbackEvent.eventId, 'failed', 'Order not found after RPC');
             return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
         }
+
+        await markCallbackProcessed(callbackEvent.eventId, 'processed');
 
         try {
             if (orderJson.email) {

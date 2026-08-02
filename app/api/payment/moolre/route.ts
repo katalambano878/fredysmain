@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
+import { recordPaymentAttempt } from '@/lib/db/payment-records';
 
 export async function POST(req: Request) {
     try {
@@ -159,6 +160,21 @@ export async function POST(req: Request) {
         console.log('[Payment] Response status:', result.status, '| Has URL:', !!result.data?.authorization_url);
 
         if (result.status === 1 && result.data?.authorization_url) {
+            await recordPaymentAttempt({
+                orderId: order.id,
+                orderNumber: orderRef,
+                gateway: 'moolre',
+                internalReference: uniqueRef,
+                gatewayReference: result.data.reference || null,
+                expectedAmount: amount,
+                customerEmail: customerEmail || order.email || null,
+                initiationPayload: {
+                    externalref: uniqueRef,
+                    callback: payload.callback,
+                },
+                gatewayResponse: { reference: result.data.reference, status: result.status },
+                status: 'processing',
+            });
             return NextResponse.json({
                 success: true,
                 url: result.data.authorization_url,
@@ -166,6 +182,17 @@ export async function POST(req: Request) {
                 externalRef: uniqueRef
             });
         } else {
+            await recordPaymentAttempt({
+                orderId: order.id,
+                orderNumber: orderRef,
+                gateway: 'moolre',
+                internalReference: uniqueRef,
+                expectedAmount: amount,
+                customerEmail: customerEmail || order.email || null,
+                initiationPayload: { externalref: uniqueRef },
+                gatewayResponse: { message: result.message, status: result.status },
+                status: 'failed',
+            });
             return NextResponse.json({ success: false, message: result.message || 'Failed to generate payment link' }, { status: 400 });
         }
 

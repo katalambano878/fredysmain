@@ -6,6 +6,7 @@ import {
     makeHubtelClientReference,
     normalizeGhPhone,
 } from '@/lib/hubtel';
+import { recordPaymentAttempt } from '@/lib/db/payment-records';
 
 /**
  * Starts a Hubtel Online Checkout session for an order and returns the
@@ -183,11 +184,43 @@ export async function POST(req: Request) {
                 result?.message ||
                 (result as any)?.data?.message ||
                 'Failed to generate payment link';
+            await recordPaymentAttempt({
+                orderId: order.id,
+                orderNumber: orderRef,
+                gateway: 'hubtel',
+                internalReference: clientReference,
+                expectedAmount: roundedAmount,
+                customerEmail: customerMail || null,
+                customerPhone: customerPhone || null,
+                initiationPayload: { description: payload.description },
+                gatewayResponse: { message: upstreamMessage },
+                status: 'failed',
+            });
             return NextResponse.json(
                 { success: false, message: `Hubtel: ${upstreamMessage}` },
                 { status: 502 },
             );
         }
+
+        await recordPaymentAttempt({
+            orderId: order.id,
+            orderNumber: orderRef,
+            gateway: 'hubtel',
+            internalReference: clientReference,
+            gatewayReference: checkoutId || null,
+            expectedAmount: roundedAmount,
+            customerEmail: customerMail || null,
+            customerPhone: customerPhone || null,
+            initiationPayload: {
+                description: payload.description,
+                callbackUrl: payload.callbackUrl,
+            },
+            gatewayResponse: {
+                checkoutId,
+                hasCheckoutUrl: true,
+            },
+            status: 'processing',
+        });
 
         return NextResponse.json({
             success: true,

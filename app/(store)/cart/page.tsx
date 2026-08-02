@@ -79,7 +79,11 @@ export default function CartPage() {
           </div>
         )}
 
-        {cartItems.length === 0 && savedItems.length === 0 ? (
+        {!isHydrated ? (
+          <section className="py-20 flex justify-center">
+            <div className="w-12 h-12 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
+          </section>
+        ) : cartItems.length === 0 && savedItems.length === 0 ? (
           <section className="py-20">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
               <div className="w-24 h-24 flex items-center justify-center mx-auto mb-6 bg-gray-200 rounded-full">
