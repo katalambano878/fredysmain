@@ -27,21 +27,30 @@ export default function Home() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [productsResult, categoriesRes] = await Promise.all([
-          supabase
-            .from('products')
-            .select('*, product_variants(*), product_images(*)')
-            .eq('status', 'active')
-            .order('created_at', { ascending: false })
-            .limit(12),
-          // Prefer server API (plain-PG safe). Fallback to client query with contains().
+        // Prefer lean storefront API — avoid embedding every variant/image via REST
+        const [productsRes, categoriesRes] = await Promise.all([
+          fetch('/api/storefront/products?limit=12', { credentials: 'same-origin' })
+            .then(async (r) => (r.ok ? r.json() : null))
+            .catch(() => null),
           fetch('/api/storefront/categories')
             .then(async (r) => (r.ok ? r.json() : null))
             .catch(() => null),
         ]);
 
-        if (productsResult.error) throw productsResult.error;
-        setFeaturedProducts(productsResult.data || []);
+        if (Array.isArray(productsRes)) {
+          setFeaturedProducts(productsRes);
+        } else {
+          const productsResult = await supabase
+            .from('products')
+            .select(
+              'id, name, slug, price, compare_at_price, quantity, featured, rating_avg, review_count, moq, product_variants(id, name, price, quantity, option1, option2), product_images(url, position)'
+            )
+            .eq('status', 'active')
+            .order('created_at', { ascending: false })
+            .limit(12);
+          if (productsResult.error) throw productsResult.error;
+          setFeaturedProducts(productsResult.data || []);
+        }
 
         let featured: any[] = [];
         if (Array.isArray(categoriesRes)) {

@@ -85,7 +85,7 @@ function ShopContent() {
         setLoadingMore(true);
       }
       try {
-        const fetchSize = selectedAge ? 100 : productsPerPage;
+        const fetchSize = selectedAge ? 36 : productsPerPage;
         const cats = categoriesRef.current;
 
         let categorySlugs = 'all';
@@ -224,21 +224,28 @@ function ShopContent() {
     searchQuery,
   ]);
 
-  // Infinite scroll — tighter margin to avoid loading too many pages at once
+  // Infinite scroll — debounce + cap pages so mobile doesn't load unbounded product DOM
+  const MAX_AUTO_PAGES = 8;
   useEffect(() => {
     const el = loadMoreRef.current;
     if (!el) return;
+    let armed = true;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
-          setPage((prev) => prev + 1);
-        }
+        if (!entries[0].isIntersecting || !hasMore || loading || loadingMore) return;
+        if (page >= MAX_AUTO_PAGES) return;
+        if (!armed) return;
+        armed = false;
+        setPage((prev) => prev + 1);
+        window.setTimeout(() => {
+          armed = true;
+        }, 600);
       },
-      { rootMargin: '240px 0px' }
+      { rootMargin: '120px 0px' }
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [hasMore, loading, loadingMore]);
+  }, [hasMore, loading, loadingMore, page]);
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-brand-greenLight/40 via-white to-white">
@@ -561,7 +568,21 @@ function ShopContent() {
                   )}
 
                   {/* Sentinel element observed to trigger the next page load */}
-                  <div ref={loadMoreRef} className="h-px w-full" aria-hidden="true" />
+                  {page < MAX_AUTO_PAGES && (
+                    <div ref={loadMoreRef} className="h-px w-full" aria-hidden="true" />
+                  )}
+
+                  {hasMore && page >= MAX_AUTO_PAGES && !loadingMore && (
+                    <div className="mt-10 text-center">
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => p + 1)}
+                        className="inline-flex items-center rounded-full bg-brand-green px-6 py-3 text-sm font-semibold text-white hover:bg-brand-greenDark"
+                      >
+                        Load more outfits
+                      </button>
+                    </div>
+                  )}
 
                   {!hasMore && (
                     <p className="mt-12 text-center text-sm text-brand-greenDark/70">

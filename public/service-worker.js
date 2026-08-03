@@ -1,5 +1,5 @@
 // Freby's Fashion GH — network-first pages; no HTML shell cache (playbook §16)
-const CACHE_VERSION = 'sw-v2.5';
+const CACHE_VERSION = 'sw-v2.6';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const IMAGE_CACHE = `images-${CACHE_VERSION}`;
 const API_CACHE = `api-${CACHE_VERSION}`;
@@ -107,29 +107,16 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Storefront API: network first, short cache fallback
-  if (url.pathname.startsWith('/api/storefront')) {
+  // Storefront API: network-only (stale API cache caused empty/janky shop after deploys)
+  if (url.pathname.startsWith('/api/storefront') || url.pathname.startsWith('/api/orders')) {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(API_CACHE).then((cache) => {
-              cache.put(request, clone);
-              trimCache(API_CACHE, API_CACHE_LIMIT);
-            });
-          }
-          return response;
-        })
-        .catch(() =>
-          caches.match(request).then(
-            (cached) =>
-              cached ||
-              new Response(JSON.stringify({ error: 'Offline' }), {
-                headers: { 'Content-Type': 'application/json' },
-              })
-          )
-        )
+      fetch(request).catch(
+        () =>
+          new Response(JSON.stringify({ error: 'Offline' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' },
+          })
+      )
     );
     return;
   }

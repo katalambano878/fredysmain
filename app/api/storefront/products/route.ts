@@ -28,10 +28,10 @@ export async function GET(request: Request) {
         let query = supabaseAdmin
             .from('products')
             .select(`
-                id, name, slug, price, compare_at_price, quantity, description, metadata,
+                id, name, slug, price, compare_at_price, quantity, featured, rating_avg, review_count, moq,
                 categories(id, name, slug),
                 product_images(url, position),
-                product_variants(id, name, price, quantity)
+                product_variants(id, name, price, quantity, option1, option2)
             `)
             .order('created_at', { ascending: false })
             .eq('status', 'active');
