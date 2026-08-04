@@ -22,23 +22,35 @@ export default function TicketsPage() {
 
   const fetchTickets = useCallback(async () => {
     setLoading(true);
-    const from = (page - 1) * limit;
-    const to = from + limit - 1;
+    try {
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
 
-    let query = supabase
-      .from('support_tickets')
-      .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range(from, to);
+      let query = supabase
+        .from('support_tickets')
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
-    if (statusTab !== 'all') query = query.eq('status', statusTab);
-    if (priorityFilter !== 'all') query = query.eq('priority', priorityFilter);
-    if (search) query = query.or(`ticket_number.ilike.%${search}%,subject.ilike.%${search}%,customer_email.ilike.%${search}%,customer_name.ilike.%${search}%`);
+      if (statusTab !== 'all') query = query.eq('status', statusTab);
+      if (priorityFilter !== 'all') query = query.eq('priority', priorityFilter);
+      if (search) {
+        query = query.or(
+          `ticket_number.ilike.%${search}%,subject.ilike.%${search}%,customer_email.ilike.%${search}%,customer_name.ilike.%${search}%`
+        );
+      }
 
-    const { data, count } = await query;
-    setTickets(data || []);
-    setTotal(count || 0);
-    setLoading(false);
+      const { data, count, error } = await query;
+      if (error) throw error;
+      setTickets(data || []);
+      setTotal(count || 0);
+    } catch (e) {
+      console.error('[Tickets] load failed:', e);
+      setTickets([]);
+      setTotal(0);
+    } finally {
+      setLoading(false);
+    }
   }, [page, statusTab, priorityFilter, search]);
 
   useEffect(() => { fetchTickets(); }, [fetchTickets]);

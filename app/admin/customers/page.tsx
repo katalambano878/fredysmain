@@ -24,8 +24,9 @@ export default function AdminCustomersPage() {
       // Fetch from new customers table (includes both guests and registered users)
       const { data: customerData, error: cError } = await supabase
         .from('customers')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('id, email, full_name, phone, user_id, total_spent, total_orders, last_order_at, created_at, status')
+        .order('created_at', { ascending: false })
+        .limit(500);
 
       if (cError) {
         // Fallback to old profiles-based approach if customers table doesn't exist yet
@@ -39,7 +40,7 @@ export default function AdminCustomersPage() {
           .from('orders')
           .select('id, user_id, email, total, status, created_at')
           .order('created_at', { ascending: false })
-          .limit(5000);
+          .limit(1000);
 
         type OrderAgg = {
           orders: number;
@@ -144,14 +145,17 @@ export default function AdminCustomersPage() {
     try {
       const { data: profiles, error: pError } = await supabase
         .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('id, email, full_name, phone, created_at')
+        .order('created_at', { ascending: false })
+        .limit(500);
 
       if (pError) throw pError;
 
       const { data: orders } = await supabase
         .from('orders')
-        .select('id, user_id, email, total, created_at, status, shipping_address');
+        .select('id, user_id, email, total, created_at, status, shipping_address')
+        .order('created_at', { ascending: false })
+        .limit(1000);
 
       // Process registered users
       const registeredCustomers = (profiles || []).map((profile: any) => {

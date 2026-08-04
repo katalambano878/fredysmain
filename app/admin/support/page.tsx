@@ -16,15 +16,25 @@ export default function SupportDashboard() {
 
   async function fetchDashboard() {
     setLoading(true);
-    const [statsRes, convosRes, ticketsRes] = await Promise.all([
-      supabase.rpc('get_support_dashboard_stats'),
-      supabase.from('chat_conversations').select('*').order('updated_at', { ascending: false }).limit(8),
-      supabase.from('support_tickets').select('*').in('status', ['open', 'in_progress', 'waiting_customer']).order('created_at', { ascending: false }).limit(10),
-    ]);
-    setStats(statsRes.data);
-    setRecentConversations(convosRes.data || []);
-    setOpenTickets(ticketsRes.data || []);
-    setLoading(false);
+    try {
+      const [statsRes, convosRes, ticketsRes] = await Promise.all([
+        supabase.rpc('get_support_dashboard_stats'),
+        supabase.from('chat_conversations').select('*').order('updated_at', { ascending: false }).limit(8),
+        supabase
+          .from('support_tickets')
+          .select('*')
+          .in('status', ['open', 'in_progress', 'waiting_customer'])
+          .order('created_at', { ascending: false })
+          .limit(10),
+      ]);
+      setStats(statsRes.data);
+      setRecentConversations(convosRes.data || []);
+      setOpenTickets(ticketsRes.data || []);
+    } catch (e) {
+      console.error('[Support] dashboard load failed:', e);
+    } finally {
+      setLoading(false);
+    }
   }
 
   const sentimentIcon = (s: string) => {

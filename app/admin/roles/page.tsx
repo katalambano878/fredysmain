@@ -66,17 +66,24 @@ export default function RolesPage() {
     }
 
     async function fetchRoles() {
-        const { data, error } = await supabase
-            .from('roles')
-            .select('*')
-            .order('is_system', { ascending: false });
+        try {
+            const { data, error } = await supabase
+                .from('roles')
+                .select('*')
+                .order('is_system', { ascending: false });
 
-        if (error) {
-            console.error('Error fetching roles:', error);
-            return;
+            if (error) {
+                console.error('Error fetching roles:', error);
+                setRoles([]);
+                return;
+            }
+            setRoles(data || []);
+        } catch (e) {
+            console.error('Error fetching roles:', e);
+            setRoles([]);
+        } finally {
+            setLoading(false);
         }
-        setRoles(data || []);
-        setLoading(false);
     }
 
     async function fetchUserCounts() {

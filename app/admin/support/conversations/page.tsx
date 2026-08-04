@@ -30,27 +30,34 @@ export default function ConversationsPage() {
 
   const fetchConversations = useCallback(async () => {
     setLoading(true);
-    const offset = (page - 1) * limit;
+    try {
+      const offset = (page - 1) * limit;
 
-    // Use RPC for deep message search (searches inside actual chat messages)
-    const { data: result, error } = await supabase.rpc('search_chat_conversations', {
-      p_search: debouncedSearch || '',
-      p_sentiment: sentimentFilter || '',
-      p_resolved: resolvedFilter || '',
-      p_limit: limit,
-      p_offset: offset,
-    });
+      // Use RPC for deep message search (searches inside actual chat messages)
+      const { data: result, error } = await supabase.rpc('search_chat_conversations', {
+        p_search: debouncedSearch || '',
+        p_sentiment: sentimentFilter || '',
+        p_resolved: resolvedFilter || '',
+        p_limit: limit,
+        p_offset: offset,
+      });
 
-    if (error) {
-      console.error('Search error:', error);
+      if (error) {
+        console.error('Search error:', error);
+        setConversations([]);
+        setTotal(0);
+      } else {
+        const parsed = typeof result === 'string' ? JSON.parse(result) : result;
+        setConversations(parsed?.data || []);
+        setTotal(parsed?.total || 0);
+      }
+    } catch (e) {
+      console.error('Search error:', e);
       setConversations([]);
       setTotal(0);
-    } else {
-      const parsed = typeof result === 'string' ? JSON.parse(result) : result;
-      setConversations(parsed?.data || []);
-      setTotal(parsed?.total || 0);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [page, debouncedSearch, sentimentFilter, resolvedFilter]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);

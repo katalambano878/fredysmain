@@ -106,7 +106,11 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
     try {
       setLoading(true);
 
-      const res = await fetch('/api/admin/orders', { credentials: 'include' });
+      const { fetchWithTimeout } = await import('@/lib/fetch-timeout');
+      const res = await fetchWithTimeout('/api/admin/orders?limit=500', {
+        credentials: 'include',
+        timeoutMs: 25_000,
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to fetch orders');
       const allOrders: Order[] = json.orders || [];

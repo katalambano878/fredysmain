@@ -69,8 +69,14 @@ export default function Header() {
   const siteName = rawSiteName && !/deliz/i.test(rawSiteName) ? rawSiteName : 'Freby’s Fashion GH';
 
   useEffect(() => {
+    let ticking = false;
     const handleScroll = () => {
-      setIsScrolled(window.scrollY > 15);
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        setIsScrolled(window.scrollY > 15);
+        ticking = false;
+      });
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
 

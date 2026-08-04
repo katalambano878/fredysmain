@@ -72,8 +72,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ items: data || [] });
     }
 
-    // Full orders list
+    // Orders list — capped to protect pool + admin UI (default 300, max 1000)
     const preorderOnly = searchParams.get('preorder') === '1';
+    const page = Math.max(1, Number(searchParams.get('page') || 1) || 1);
+    const limit = Math.min(1000, Math.max(1, Number(searchParams.get('limit') || 300) || 300));
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
     let ordersQuery = supabaseAdmin
       .from('orders')
       .select(`
@@ -99,17 +104,24 @@ export async function GET(request: Request) {
           product_name,
           is_preorder
         )
-      `)
-      .order('created_at', { ascending: false });
+      `, { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(from, to);
 
     if (preorderOnly) {
       ordersQuery = ordersQuery.eq('is_preorder', true);
     }
 
-    const { data: ordersData, error } = await ordersQuery;
+    const { data: ordersData, error, count } = await ordersQuery;
 
     if (error) throw error;
-    return NextResponse.json({ orders: ordersData || [] });
+    return NextResponse.json({
+      orders: ordersData || [],
+      page,
+      limit,
+      total: count ?? (ordersData || []).length,
+      hasMore: typeof count === 'number' ? to + 1 < count : (ordersData || []).length === limit,
+    });
   } catch (e: any) {
     console.error('Admin orders API error:', e);
     return NextResponse.json({ error: e.message }, { status: 500 });

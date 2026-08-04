@@ -44,20 +44,26 @@ function AccountContent() {
 
   useEffect(() => {
     async function checkUser() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/auth/login');
-        return;
-      }
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          router.push('/auth/login');
+          return;
+        }
 
-      setUser(session.user);
-      setProfileData({
-        firstName: session.user.user_metadata?.first_name || '',
-        lastName: session.user.user_metadata?.last_name || '',
-        email: session.user.email || '',
-        phone: session.user.phone || ''
-      });
-      setLoading(false);
+        setUser(session.user);
+        setProfileData({
+          firstName: session.user.user_metadata?.first_name || '',
+          lastName: session.user.user_metadata?.last_name || '',
+          email: session.user.email || '',
+          phone: session.user.phone || ''
+        });
+      } catch (e) {
+        console.error('[Account] session check failed:', e);
+        router.push('/auth/login');
+      } finally {
+        setLoading(false);
+      }
     }
     checkUser();
   }, [router]);

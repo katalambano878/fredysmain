@@ -13,23 +13,36 @@ export default function KnowledgeBasePage() {
   const [showModal, setShowModal] = useState(searchParams.get('new') === '1');
   const [editingArticle, setEditingArticle] = useState<any>(null);
 
-  const fetchArticles = useCallback(async () => {
+  const fetchArticles = useCallback(async (searchTerm: string, category: string) => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (search) params.set('search', search);
-    if (categoryFilter) params.set('category', categoryFilter);
-    const res = await fetch(`/api/support/knowledge-base?${params}`);
-    const data = await res.json();
-    setArticles(data.data || []);
-    setLoading(false);
-  }, [search, categoryFilter]);
+    try {
+      const { fetchWithTimeout } = await import('@/lib/fetch-timeout');
+      const params = new URLSearchParams();
+      if (searchTerm) params.set('search', searchTerm);
+      if (category) params.set('category', category);
+      const res = await fetchWithTimeout(`/api/support/knowledge-base?${params}`, { timeoutMs: 15_000 });
+      const data = await res.json();
+      setArticles(data.data || []);
+    } catch (e) {
+      console.error('[Knowledge base]', e);
+      setArticles([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  useEffect(() => { fetchArticles(); }, [fetchArticles]);
+  // Debounce search to avoid spinner on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => {
+      fetchArticles(search, categoryFilter);
+    }, search ? 350 : 0);
+    return () => clearTimeout(t);
+  }, [search, categoryFilter, fetchArticles]);
 
   async function deleteArticle(id: string) {
     if (!confirm('Delete this article?')) return;
     await fetch(`/api/support/knowledge-base?id=${id}`, { method: 'DELETE' });
-    fetchArticles();
+    fetchArticles(search, categoryFilter);
   }
 
   async function togglePublish(article: any) {
@@ -38,7 +51,7 @@ export default function KnowledgeBasePage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: article.id, is_published: !article.is_published }),
     });
-    fetchArticles();
+    fetchArticles(search, categoryFilter);
   }
 
   const categories = [...new Set(articles.map(a => a.category).filter(Boolean))];
@@ -124,7 +137,13 @@ export default function KnowledgeBasePage() {
       )}
 
       {/* Article Modal */}
-      {showModal && <ArticleModal article={editingArticle} onClose={() => setShowModal(false)} onSaved={fetchArticles} />}
+      {showModal && (
+        <ArticleModal
+          article={editingArticle}
+          onClose={() => setShowModal(false)}
+          onSaved={() => fetchArticles(search, categoryFilter)}
+        />
+      )}
     </div>
   );
 }

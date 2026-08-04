@@ -50,8 +50,21 @@ export function getPool(): Pool {
       1000,
       Math.min(120_000, Number(process.env.PG_STATEMENT_TIMEOUT_MS || 30_000) || 30_000)
     );
-    client.query(`SET statement_timeout TO '${ms}ms'`).catch(() => {
-      /* non-fatal */
+    const lockMs = Math.max(
+      1000,
+      Math.min(60_000, Number(process.env.PG_LOCK_TIMEOUT_MS || 10_000) || 10_000)
+    );
+    const idleTxMs = Math.max(
+      5_000,
+      Math.min(300_000, Number(process.env.PG_IDLE_IN_TX_TIMEOUT_MS || 60_000) || 60_000)
+    );
+    // Fail closed on hung statements / locks / abandoned transactions
+    Promise.all([
+      client.query(`SET statement_timeout TO '${ms}ms'`),
+      client.query(`SET lock_timeout TO '${lockMs}ms'`),
+      client.query(`SET idle_in_transaction_session_timeout TO '${idleTxMs}ms'`),
+    ]).catch(() => {
+      /* non-fatal on older Postgres */
     });
   });
   return _pool;

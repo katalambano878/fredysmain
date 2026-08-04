@@ -11,7 +11,6 @@ export default function MobileBottomNav() {
   const { cartCount } = useCart();
   const { wishlistCount } = useWishlist();
   const [isVisible, setIsVisible] = useState(true);
-  const [lastScrollY, setLastScrollY] = useState(0);
   const [isStandalone, setIsStandalone] = useState(false);
 
   const isActive = (path: string) => {
@@ -27,20 +26,28 @@ export default function MobileBottomNav() {
   }, []);
 
   useEffect(() => {
+    let lastY = window.scrollY;
+    let ticking = false;
+
     const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      // Hide on scroll down, show on scroll up (only when scrolled far enough)
-      if (currentScrollY > lastScrollY && currentScrollY > 100) {
-        setIsVisible(false);
-      } else {
-        setIsVisible(true);
-      }
-      setLastScrollY(currentScrollY);
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const currentScrollY = window.scrollY;
+        // Hide on scroll down, show on scroll up (only when scrolled far enough)
+        if (currentScrollY > lastY && currentScrollY > 100) {
+          setIsVisible(false);
+        } else {
+          setIsVisible(true);
+        }
+        lastY = currentScrollY;
+        ticking = false;
+      });
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [lastScrollY]);
+  }, []);
 
   const navItems = [
     {

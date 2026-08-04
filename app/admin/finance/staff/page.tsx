@@ -21,10 +21,19 @@ export default function ProductionStaffPage() {
 
   async function load() {
     setLoading(true);
-    const res = await fetch('/api/admin/production-staff?active=0', { credentials: 'include' });
-    const json = await res.json();
-    if (res.ok && Array.isArray(json.data)) setList(json.data);
-    setLoading(false);
+    try {
+      const { fetchWithTimeout } = await import('@/lib/fetch-timeout');
+      const res = await fetchWithTimeout('/api/admin/production-staff?active=0', {
+        credentials: 'include',
+        timeoutMs: 15_000,
+      });
+      const json = await res.json();
+      if (res.ok && Array.isArray(json.data)) setList(json.data);
+    } catch (e) {
+      console.error('[Production staff] load failed:', e);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
