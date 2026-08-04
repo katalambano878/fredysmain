@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { fetchWithTimeout } from '@/lib/fetch-timeout';
 
 // Helper for currency formatting
 const formatCurrency = (amount: number) => {
@@ -15,8 +15,10 @@ const formatCurrency = (amount: number) => {
 export default function CustomerInsightsPage() {
   const [selectedSegment, setSelectedSegment] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Statistics
   const [stats, setStats] = useState({
@@ -28,103 +30,50 @@ export default function CustomerInsightsPage() {
   });
 
   useEffect(() => {
-    fetchCustomerData();
-  }, []);
+    const t = setTimeout(() => setDebouncedSearch(searchTerm.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
-  const fetchCustomerData = async () => {
+  const fetchCustomerData = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
-      setLoading(true);
-
-      // 1. Fetch Profiles
-      const { data: profiles, error: profileError } = await supabase
-        .from('profiles')
-        .select('*');
-
-      if (profileError) throw profileError;
-
-      // 2. Fetch Orders for calculations
-      const { data: orders, error: orderError } = await supabase
-        .from('orders')
-        .select('user_id, total, created_at, status');
-
-      if (orderError) throw orderError;
-
-      // 3. Aggregate Data
-      const aggregated = profiles.map((profile: any) => {
-        const userOrders = orders?.filter(o => o.user_id === profile.id) || [];
-        const totalSpent = userOrders.reduce((sum, o) => sum + (o.total || 0), 0);
-        const orderCount = userOrders.length;
-
-        // Sort orders to find last order
-        const sortedOrders = [...userOrders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        const lastOrderDate = sortedOrders[0]?.created_at || profile.created_at;
-
-        // Calculate Segment
-        let segment = 'new';
-        const daysSinceJoin = (new Date().getTime() - new Date(profile.created_at).getTime()) / (1000 * 3600 * 24);
-        const daysSinceLastOrder = (new Date().getTime() - new Date(lastOrderDate).getTime()) / (1000 * 3600 * 24);
-
-        if (totalSpent > 1000) segment = 'vip'; // VIP Threshold
-        else if (orderCount > 1) segment = 'returning';
-        else if (daysSinceLastOrder > 90 && orderCount > 0) segment = 'at-risk';
-        else if (daysSinceJoin < 30) segment = 'new';
-        else segment = 'returning'; // Default bucket
-
-        // Risk Level
-        let riskLevel = 'low';
-        if (daysSinceLastOrder > 60) riskLevel = 'medium';
-        if (daysSinceLastOrder > 120) riskLevel = 'high';
-
-        // Engagement Score (mock logic for now based on frequency)
-        let engagementScore = 50;
-        if (segment === 'vip') engagementScore += 40;
-        if (riskLevel === 'high') engagementScore -= 30;
-        if (daysSinceLastOrder < 30) engagementScore += 20;
-
-        return {
-          id: profile.id,
-          name: profile.full_name || 'Unknown User',
-          email: profile.email,
-          phone: profile.phone || '-',
-          segment,
-          totalSpent,
-          orders: orderCount,
-          avgOrderValue: orderCount > 0 ? totalSpent / orderCount : 0,
-          lifetimeValue: totalSpent, // Simple CLV for now
-          joinDate: profile.created_at,
-          lastOrder: lastOrderDate,
-          riskLevel,
-          engagementScore: Math.min(100, Math.max(0, engagementScore)),
-          tags: [] // Could be populated from metadata
-        };
+      const params = new URLSearchParams({
+        limit: '200',
+        segment: selectedSegment,
       });
+      if (debouncedSearch) params.set('search', debouncedSearch);
 
-      setCustomers(aggregated);
-
-      // Calculate Stats
-      const totalCLV = aggregated.reduce((sum, c) => sum + c.lifetimeValue, 0);
+      const res = await fetchWithTimeout(`/api/admin/customer-insights?${params}`, {
+        credentials: 'include',
+        timeoutMs: 20_000,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.success === false) {
+        throw new Error(json?.error?.message || json?.error || 'Failed to load insights');
+      }
+      setCustomers(Array.isArray(json.customers) ? json.customers : []);
       setStats({
-        vip: aggregated.filter(c => c.segment === 'vip').length,
-        returning: aggregated.filter(c => c.segment === 'returning').length,
-        new: aggregated.filter(c => c.segment === 'new').length,
-        atRisk: aggregated.filter(c => c.segment === 'at-risk').length,
-        avgCLV: aggregated.length > 0 ? totalCLV / aggregated.length : 0
+        vip: Number(json.stats?.vip) || 0,
+        returning: Number(json.stats?.returning) || 0,
+        new: Number(json.stats?.new) || 0,
+        atRisk: Number(json.stats?.atRisk) || 0,
+        avgCLV: Number(json.stats?.avgCLV) || 0,
       });
-
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching customer insights:', err);
+      setLoadError(err?.message || 'Unable to load customer insights');
+      setCustomers([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedSegment, debouncedSearch]);
 
+  useEffect(() => {
+    fetchCustomerData();
+  }, [fetchCustomerData]);
 
-  const filteredCustomers = customers.filter(customer => {
-    const matchesSearch = customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesSegment = selectedSegment === 'all' || customer.segment === selectedSegment;
-    return matchesSearch && matchesSegment;
-  });
+  const filteredCustomers = customers;
 
   const getSegmentBadge = (segment: string) => {
     const badges: any = {
@@ -156,6 +105,22 @@ export default function CustomerInsightsPage() {
   };
 
   if (loading) return <div className="p-8 text-center text-gray-500">Loading Insights...</div>;
+
+  if (loadError) {
+    return (
+      <div className="p-8 max-w-lg mx-auto text-center space-y-4">
+        <p className="text-gray-900 font-semibold">Customer insights unavailable</p>
+        <p className="text-sm text-gray-500">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => fetchCustomerData()}
+          className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

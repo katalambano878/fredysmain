@@ -72,6 +72,45 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const sortBy = searchParams.get('sortBy') || 'newest';
+    const lite = searchParams.get('lite') === '1';
+    const inventory = searchParams.get('fields') === 'inventory';
+    const limitParam = Number(searchParams.get('limit') || 0);
+    const limit = Number.isFinite(limitParam) && limitParam > 0
+      ? Math.min(2000, Math.floor(limitParam))
+      : lite
+        ? 1000
+        : inventory
+          ? 500
+          : 0;
+
+    // Lightweight list for finance dropdowns etc.
+    if (lite) {
+      let liteQuery = supabaseAdmin
+        .from('products')
+        .select('id, name')
+        .order('name', { ascending: true })
+        .limit(limit || 1000);
+      const { data, error } = await liteQuery;
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(data || []);
+    }
+
+    // Inventory-shaped payload (no full * dump of unused columns/images)
+    if (inventory) {
+      let invQuery = supabaseAdmin
+        .from('products')
+        .select(`
+          id, name, sku, price, quantity, status, gender, category_id,
+          categories(name),
+          product_variants(id, name, option1, option2, quantity, price, sort_order)
+        `)
+        .eq('status', 'active')
+        .order('name', { ascending: true })
+        .limit(limit || 500);
+      const { data, error } = await invQuery;
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json(data || []);
+    }
 
     let query = supabaseAdmin
       .from('products')
@@ -88,6 +127,7 @@ export async function GET(request: Request) {
     if (sortBy === 'price_desc') query = query.order('price', { ascending: false });
     if (sortBy === 'name') query = query.order('name', { ascending: true });
     if (sortBy === 'stock') query = query.order('quantity', { ascending: true });
+    if (limit) query = query.limit(limit);
 
     const { data, error } = await query;
 

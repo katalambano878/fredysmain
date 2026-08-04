@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { fetchWithTimeout } from '@/lib/fetch-timeout';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, AreaChart, Area, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function AnalyticsPage() {
   const [timeRange, setTimeRange] = useState('30days');
   const [reportType, setReportType] = useState('overview');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [salesData, setSalesData] = useState<any[]>([]);
   const [categoryRevenue, setCategoryRevenue] = useState<any[]>([]);
@@ -26,133 +27,33 @@ export default function AnalyticsPage() {
   });
 
   const fetchAnalytics = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
-      setLoading(true);
-
-      // Calculate start date based on timeRange
-      const now = new Date();
-      let startDate = new Date();
-      if (timeRange === '7days') startDate.setDate(now.getDate() - 7);
-      if (timeRange === '30days') startDate.setDate(now.getDate() - 30);
-      if (timeRange === '90days') startDate.setDate(now.getDate() - 90);
-      if (timeRange === 'year') startDate.setFullYear(now.getFullYear(), 0, 1);
-
-      const isoStart = startDate.toISOString();
-
-      // Fetch Orders for Revenue & Count - only PAID orders count as revenue
-      const { data: orders, error: orderError } = await supabase
-        .from('orders')
-        .select('id, created_at, total, payment_status')
-        .gte('created_at', isoStart)
-        .eq('payment_status', 'paid') // Only count paid orders as revenue
-        .neq('status', 'cancelled')
-        .order('created_at');
-
-      if (orderError) throw orderError;
-
-      // Fetch Order Items for Products & Categories
-      // This might be heavy for large DBs, but fine for typical small shop admin
-      const { data: items, error: itemError } = await supabase
-        .from('order_items')
-        .select(`
-            *,
-            products (name, categories(name))
-         `)
-        .gte('created_at', isoStart); // Assuming order_items has created_at or join orders.. 
-      // Actually order_items usually doesn't have created_at directly in some schemas, 
-      // so we should join orders to filter by date.
-      // Simpler: fetch order_items for the fetched orders IDs.
-
-      let validItems: any[] = [];
-      if (orders && orders.length > 0) {
-        const orderIds = orders.map(o => o.id);
-        const { data: fetchedItems, error: itemFetchError } = await supabase
-          .from('order_items')
-          .select(`
-            quantity, 
-            unit_price, 
-            total_price,
-            product_id,
-            products!inner(name, category_id, categories(name))
-          `)
-          .in('order_id', orderIds);
-
-        if (itemFetchError) {
-          console.error('Error fetching order items:', itemFetchError);
-        }
-        if (fetchedItems) validItems = fetchedItems;
+      const res = await fetchWithTimeout(
+        `/api/admin/analytics?range=${encodeURIComponent(timeRange)}`,
+        { credentials: 'include', timeoutMs: 25_000 }
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.success === false) {
+        throw new Error(json?.error?.message || json?.error || 'Analytics failed to load');
       }
-
-      // Process Metrics
-      const totalRevenue = orders?.reduce((sum, o) => sum + (o.total || 0), 0) || 0;
-      const totalOrders = orders?.length || 0;
-      const aov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
-
       setMetrics({
-        revenue: totalRevenue,
-        revenueGrowth: 0, // Needs comparison with previous period (skipped for simplicity/speed)
-        orders: totalOrders,
-        ordersGrowth: 0,
-        aov: aov,
-        aovGrowth: 0,
-        conversion: 0, // No visitor data
-        conversionGrowth: 0
+        revenue: Number(json.metrics?.revenue) || 0,
+        revenueGrowth: Number(json.metrics?.revenueGrowth) || 0,
+        orders: Number(json.metrics?.orders) || 0,
+        ordersGrowth: Number(json.metrics?.ordersGrowth) || 0,
+        aov: Number(json.metrics?.aov) || 0,
+        aovGrowth: Number(json.metrics?.aovGrowth) || 0,
+        conversion: Number(json.metrics?.conversion) || 0,
+        conversionGrowth: Number(json.metrics?.conversionGrowth) || 0,
       });
-
-      // Process Sales Chart Data (Group by Date with Zero-Filling)
-      const salesMap: Record<string, any> = {};
-
-      // Initialize map with all dates in range
-      const d = new Date(startDate);
-      const today = new Date();
-      while (d <= today) {
-        const dateKey = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        salesMap[dateKey] = {
-          date: dateKey,
-          sales: 0,
-          orders: 0,
-          fullDate: d.getTime() // Helper for sorting
-        };
-        d.setDate(d.getDate() + 1);
-      }
-
-      orders?.forEach(o => {
-        const dateKey = new Date(o.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        if (salesMap[dateKey]) {
-          salesMap[dateKey].sales += o.total || 0;
-          salesMap[dateKey].orders += 1;
-        }
-      });
-
-      setSalesData(Object.values(salesMap));
-
-      // Process Category Revenue
-      const catMap: Record<string, any> = {};
-      validItems.forEach(item => {
-        const catName = item.products?.categories?.name || 'Uncategorized';
-        if (!catMap[catName]) catMap[catName] = { name: catName, value: 0 };
-        // Use total_price if available, otherwise calculate from unit_price * quantity
-        const itemRevenue = item.total_price || (item.unit_price * item.quantity) || 0;
-        catMap[catName].value += itemRevenue;
-      });
-      // Convert to array for Recharts Pie
-      const catArray = Object.values(catMap).map((c: any) => ({ name: c.name, value: c.value }));
-      setCategoryRevenue(catArray);
-
-      // Process Top Products
-      const prodMap: Record<string, any> = {};
-      validItems.forEach(item => {
-        const pName = item.products?.name || 'Unknown';
-        if (!prodMap[pName]) prodMap[pName] = { name: pName, revenue: 0, units: 0 };
-        const itemRevenue = item.total_price || (item.unit_price * item.quantity) || 0;
-        prodMap[pName].revenue += itemRevenue;
-        prodMap[pName].units += item.quantity;
-      });
-      const topProdArray = Object.values(prodMap).sort((a: any, b: any) => b.revenue - a.revenue).slice(0, 5);
-      setTopProducts(topProdArray);
-
-    } catch (err) {
+      setSalesData(Array.isArray(json.salesData) ? json.salesData : []);
+      setCategoryRevenue(Array.isArray(json.categoryRevenue) ? json.categoryRevenue : []);
+      setTopProducts(Array.isArray(json.topProducts) ? json.topProducts : []);
+    } catch (err: any) {
       console.error('Error fetching analytics:', err);
+      setLoadError(err?.message || 'Unable to load analytics');
     } finally {
       setLoading(false);
     }
@@ -163,6 +64,26 @@ export default function AnalyticsPage() {
   }, [fetchAnalytics]);
 
   const COLORS = ['#171717', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
+
+  if (loading) {
+    return <div className="p-8 text-center text-gray-500">Loading Analytics...</div>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="p-8 max-w-lg mx-auto text-center space-y-4">
+        <p className="text-gray-900 font-semibold">Analytics unavailable</p>
+        <p className="text-sm text-gray-500">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => fetchAnalytics()}
+          className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

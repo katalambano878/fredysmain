@@ -2,8 +2,8 @@
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
 import { money, moneyLabel } from '@/lib/format-money';
+import { fetchWithTimeout } from '@/lib/fetch-timeout';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -104,26 +104,16 @@ export default function InventoryManagementPage() {
         try {
             setLoading(true);
             setError(null);
-            const { data, error: dbError } = await supabase
-                .from('products')
-                .select(`
-                    id,
-                    name,
-                    sku,
-                    price,
-                    quantity,
-                    status,
-                    gender,
-                    category_id,
-                    categories(name),
-                    product_variants(id, name, option1, option2, quantity, price, sort_order)
-                `)
-                .eq('status', 'active')
-                .order('name');
+            const res = await fetchWithTimeout('/api/admin/products?fields=inventory&limit=500', {
+                credentials: 'include',
+                timeoutMs: 25_000,
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok) {
+                throw new Error(data?.error || 'Failed to fetch inventory');
+            }
 
-            if (dbError) throw dbError;
-
-            const rows: ProductRow[] = (data || []).map((p: any) => {
+            const rows: ProductRow[] = (Array.isArray(data) ? data : []).map((p: any) => {
                 const rawVariants: any[] = Array.isArray(p.product_variants) ? p.product_variants : [];
                 const variants: VariantRow[] = [...rawVariants]
                     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))

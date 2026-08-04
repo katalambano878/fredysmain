@@ -58,9 +58,11 @@ export default function FinancePage() {
     async function load() {
       setLoading(true);
       try {
-        const res = await fetch(`/api/admin/finance/summary?month=${encodeURIComponent(month)}`, {
-          credentials: 'include',
-        });
+        const { fetchWithTimeout } = await import('@/lib/fetch-timeout');
+        const res = await fetchWithTimeout(
+          `/api/admin/finance/summary?month=${encodeURIComponent(month)}`,
+          { credentials: 'include', timeoutMs: 20_000 }
+        );
         const json = await res.json();
         if (res.ok) setSummary(json);
         else setSummary(null);
@@ -75,17 +77,29 @@ export default function FinancePage() {
 
   useEffect(() => {
     async function loadOpts() {
-      const [sRes, pRes] = await Promise.all([
-        fetch('/api/admin/production-staff?active=1', { credentials: 'include' }),
-        fetch('/api/admin/products?sortBy=name', { credentials: 'include' }),
-      ]);
-      const sJson = await sRes.json().catch(() => ({}));
-      const pJson = await pRes.json().catch(() => []);
-      if (sRes.ok && Array.isArray(sJson.data)) {
-        setStaffList(sJson.data.map((x: any) => ({ id: x.id, full_name: x.full_name })));
-      }
-      if (pRes.ok && Array.isArray(pJson)) {
-        setProducts(pJson.map((x: any) => ({ id: x.id, name: x.name })));
+      try {
+        const { fetchWithTimeout } = await import('@/lib/fetch-timeout');
+        const [sRes, pRes] = await Promise.all([
+          fetchWithTimeout('/api/admin/production-staff?active=1', {
+            credentials: 'include',
+            timeoutMs: 15_000,
+          }),
+          // lite=1: id+name only — not full product+images dump
+          fetchWithTimeout('/api/admin/products?lite=1&limit=1000', {
+            credentials: 'include',
+            timeoutMs: 15_000,
+          }),
+        ]);
+        const sJson = await sRes.json().catch(() => ({}));
+        const pJson = await pRes.json().catch(() => []);
+        if (sRes.ok && Array.isArray(sJson.data)) {
+          setStaffList(sJson.data.map((x: any) => ({ id: x.id, full_name: x.full_name })));
+        }
+        if (pRes.ok && Array.isArray(pJson)) {
+          setProducts(pJson.map((x: any) => ({ id: x.id, name: x.name })));
+        }
+      } catch (e) {
+        console.error('[Finance] options load failed:', e);
       }
     }
     loadOpts();
