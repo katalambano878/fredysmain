@@ -2,7 +2,7 @@
 
 import Script from 'next/script';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
 
 const PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID;
 
@@ -10,9 +10,15 @@ function MetaPixelInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const isAdmin = pathname?.startsWith('/admin');
+  const isFirst = useRef(true);
 
   useEffect(() => {
     if (!PIXEL_ID || isAdmin || typeof window === 'undefined' || typeof window.fbq !== 'function') {
+      return;
+    }
+    // Base snippet already fires the first PageView
+    if (isFirst.current) {
+      isFirst.current = false;
       return;
     }
     window.fbq('track', 'PageView');
@@ -33,6 +39,7 @@ t.src=v;s=b.getElementsByTagName(e)[0];
 s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
 fbq('init', '${PIXEL_ID}');
+fbq('track', 'PageView');
         `}
       </Script>
       <noscript>
