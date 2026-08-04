@@ -11,6 +11,7 @@ import { StructuredData, generateProductSchema, generateBreadcrumbSchema } from 
 import { notFound, useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { usePageTitle } from '@/hooks/usePageTitle';
+import { trackViewContent } from '@/lib/meta-pixel';
 
 // Map common color names to hex values for the swatch preview
 function colorNameToHex(name: string): string {
@@ -192,6 +193,22 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
       fetchProduct();
     }
   }, [slug]);
+
+  useEffect(() => {
+    if (!product?.id) return;
+    const variantPrices = (product.variants || [])
+      .map((v: any) => Number(v.price))
+      .filter((n: number) => Number.isFinite(n) && n > 0);
+    const price = variantPrices.length
+      ? Math.min(...variantPrices)
+      : Number(product.price) || 0;
+    trackViewContent({
+      id: product.id,
+      name: product.name,
+      price,
+      category: product.category,
+    });
+  }, [product?.id]);
 
   const hasVariants = product?.variants?.length > 0;
   const hasColors = product?.colors?.length > 0;

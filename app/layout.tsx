@@ -3,6 +3,7 @@ import Script from "next/script";
 import { Pacifico, Playfair_Display, Inter } from "next/font/google";
 import { CartProvider } from "@/context/CartContext";
 import { WishlistProvider } from "@/context/WishlistContext";
+import MetaPixel from "@/components/MetaPixel";
 import "./globals.css";
 
 const pacifico = Pacifico({ weight: "400", subsets: ["latin"], variable: "--font-pacifico" });
@@ -258,6 +259,7 @@ export default function RootLayout({
       )}
 
       <body className={`antialiased overflow-x-hidden pwa-body ${pacifico.variable} ${playfair.variable} ${inter.variable} font-sans`} style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}>
+        <MetaPixel />
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[10000] focus:px-6 focus:py-3 focus:bg-gray-900 focus:text-white focus:rounded-lg focus:font-semibold focus:shadow-lg"

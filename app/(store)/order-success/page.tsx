@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState, useEffect, useRef } from 'react';
 import { useCart } from '@/context/CartContext';
+import { trackPurchase } from '@/lib/meta-pixel';
 
 async function secureFetchOrder(orderNumber: string, email: string) {
   const res = await fetch('/api/orders/lookup', {
@@ -26,6 +27,7 @@ function OrderSuccessContent() {
   const [showConfetti, setShowConfetti] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const { clearCart } = useCart();
+  const purchaseTracked = useRef(false);
 
   useEffect(() => {
     // Clear cart once customer lands on success (paid or gateway return)
@@ -33,6 +35,40 @@ function OrderSuccessContent() {
       clearCart();
     }
   }, [orderNumber, paymentSuccess, order?.payment_status, clearCart]);
+
+  // Meta Pixel Purchase (deduped with server CAPI via purchase_{order_number})
+  useEffect(() => {
+    if (!order || order.payment_status !== 'paid' || purchaseTracked.current) return;
+    const orderId = String(order.order_number || '');
+    if (!orderId) return;
+    const storageKey = `meta_purchase_${orderId}`;
+    try {
+      if (sessionStorage.getItem(storageKey) === '1') {
+        purchaseTracked.current = true;
+        return;
+      }
+      sessionStorage.setItem(storageKey, '1');
+    } catch {
+      /* private mode */
+    }
+    purchaseTracked.current = true;
+    const items = Array.isArray(order.order_items) ? order.order_items : [];
+    const contentIds = items.map((i: any) => i.product_id).filter(Boolean);
+    const contents = items
+      .filter((i: any) => i.product_id)
+      .map((i: any) => ({
+        id: String(i.product_id),
+        quantity: Number(i.quantity) || 1,
+        item_price: Number(i.unit_price) || undefined,
+      }));
+    trackPurchase({
+      orderId,
+      value: Number(order.total) || 0,
+      contentIds,
+      contents,
+      numItems: contents.reduce((s: number, c: { quantity: number }) => s + c.quantity, 0),
+    });
+  }, [order]);
 
   useEffect(() => {
     async function fetchOrder() {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireAdminSession } from '@/lib/admin-route-auth';
+import { fireMetaPurchaseForOrder } from '@/lib/meta-purchase';
 
 /**
  * Manually mark order paid via mark_order_paid RPC (stock + stats side effects).
@@ -29,7 +30,7 @@ export async function POST(
       return NextResponse.json({ success: true, alreadyPaid: true });
     }
 
-    const { error: rpcError } = await supabaseAdmin.rpc('mark_order_paid', {
+    const { data: paidOrder, error: rpcError } = await supabaseAdmin.rpc('mark_order_paid', {
       order_ref: order.order_number || order.id,
       moolre_ref: `manual-admin-${Date.now()}`,
     });
@@ -53,6 +54,13 @@ export async function POST(
         })
         .eq('id', id);
     }
+
+    const { data: fullOrder } = await supabaseAdmin
+      .from('orders')
+      .select('id, order_number, email, phone, total, shipping_address, metadata')
+      .eq('id', id)
+      .single();
+    void fireMetaPurchaseForOrder(paidOrder || fullOrder);
 
     return NextResponse.json({ success: true });
   } catch (e: any) {

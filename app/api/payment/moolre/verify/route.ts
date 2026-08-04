@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { sendOrderConfirmation } from '@/lib/notifications';
+import { fireMetaPurchaseForOrder } from '@/lib/meta-purchase';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 
 /**
@@ -158,6 +159,7 @@ export async function POST(req: Request) {
             } catch (notifyError: any) {
                 console.error('[Verify] Notification failed:', notifyError.message);
             }
+            void fireMetaPurchaseForOrder(orderJson);
         }
 
         return NextResponse.json({

@@ -8,6 +8,7 @@ import {
     useState,
     ReactNode,
 } from 'react';
+import { trackAddToCart } from '@/lib/meta-pixel';
 
 export type CartItem = {
     id: string;
@@ -145,6 +146,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
         persistCart(next);
         setCart(next);
         setIsCartOpen(true);
+        try {
+            trackAddToCart({
+                id: newItem.id,
+                name: newItem.name,
+                price: Number(newItem.price) || 0,
+                quantity: Number(newItem.quantity) || 1,
+            });
+        } catch {
+            /* analytics must not break cart */
+        }
     };
 
     const removeFromCart = (itemId: string, variant?: string) => {

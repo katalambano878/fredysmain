@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import CheckoutSteps from '@/components/CheckoutSteps';
 import OrderSummary from '@/components/OrderSummary';
@@ -14,6 +14,7 @@ import {
   shippingDataToAddressInput,
   type AddressLike,
 } from '@/lib/address-map';
+import { trackInitiateCheckout } from '@/lib/meta-pixel';
 
 export default function CheckoutPage() {
   usePageTitle('Checkout');
@@ -129,6 +130,18 @@ export default function CheckoutPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentStep]);
+
+  // Meta Pixel + CAPI: InitiateCheckout once per checkout page visit
+  const initiateCheckoutTracked = useRef(false);
+  useEffect(() => {
+    if (!isHydrated || cart.length === 0 || initiateCheckoutTracked.current) return;
+    initiateCheckoutTracked.current = true;
+    trackInitiateCheckout({
+      contentIds: cart.map((i) => i.id),
+      value: cartSubtotal,
+      numItems: cart.reduce((sum, i) => sum + i.quantity, 0),
+    });
+  }, [isHydrated, cart, cartSubtotal]);
 
   // Calculate Totals
   const subtotal = cartSubtotal;

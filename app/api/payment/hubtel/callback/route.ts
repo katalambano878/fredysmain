@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { sendOrderConfirmation } from '@/lib/notifications';
+import { fireMetaPurchaseForOrder } from '@/lib/meta-purchase';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import {
     checkHubtelStatus,
@@ -206,6 +207,8 @@ export async function POST(req: Request) {
         } catch (e: any) {
             console.error('[Hubtel Callback] Notification failed:', e?.message || e);
         }
+
+        void fireMetaPurchaseForOrder(orderJson);
 
         return NextResponse.json({ success: true, message: 'Payment verified and order updated' });
     } catch (error: any) {
