@@ -6,6 +6,7 @@ import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-lim
 import {
     checkHubtelStatus,
     isHubtelPaid,
+    hubtelAmountMatchesExpected,
     stripHubtelReferenceSuffix,
 } from '@/lib/hubtel';
 import {
@@ -139,14 +140,23 @@ export async function POST(req: Request) {
         }
 
         let serverConfirmed = false;
+        let confirmedCustomerPaid: number | null = null;
         let confirmedSettlement: number | null = null;
         try {
             const status = await checkHubtelStatus(rawClientReference || merchantOrderRef);
             const sStatus = String(status?.data?.status || '').toLowerCase();
             serverConfirmed = isHubtelPaid(sStatus, status?.responseCode);
-            const settlement = status?.data?.amountAfterCharges ?? status?.data?.amount;
-            if (settlement !== undefined && settlement !== null) {
-                const n = parseFloat(String(settlement));
+            // Prefer TransactionAmount (customer paid). AmountAfterFees is merchant
+            // settlement after Hubtel's fee and must not be compared alone to order total.
+            if (status?.data?.amount !== undefined && status?.data?.amount !== null) {
+                const n = parseFloat(String(status.data.amount));
+                if (Number.isFinite(n)) confirmedCustomerPaid = n;
+            }
+            if (
+                status?.data?.amountAfterCharges !== undefined &&
+                status?.data?.amountAfterCharges !== null
+            ) {
+                const n = parseFloat(String(status.data.amountAfterCharges));
                 if (Number.isFinite(n)) confirmedSettlement = n;
             }
         } catch (e: any) {
@@ -167,31 +177,27 @@ export async function POST(req: Request) {
             );
         }
 
-        const amountToCheck = confirmedSettlement ?? callbackAmount;
-        if (amountToCheck !== null && Math.abs(amountToCheck - expectedAmount) > 0.01) {
-            // Allow small customer-side fee surcharge when settlement missing
-            const surchargeOk =
-                confirmedSettlement === null &&
-                callbackAmount !== null &&
-                callbackAmount >= expectedAmount &&
-                callbackAmount - expectedAmount <= Math.max(5, expectedAmount * 0.05);
-            if (!surchargeOk) {
-                console.error(
-                    '[Hubtel Callback] AMOUNT MISMATCH! Expected:',
-                    expectedAmount,
-                    'Got:',
-                    amountToCheck,
-                );
-                await markCallbackProcessed(
-                    callbackEvent.eventId,
-                    'failed',
-                    `Amount mismatch expected=${expectedAmount} got=${amountToCheck}`
-                );
-                return NextResponse.json(
-                    { success: false, message: 'Payment amount does not match expected charge' },
-                    { status: 400 },
-                );
-            }
+        const customerForMatch = confirmedCustomerPaid ?? callbackAmount;
+        if (
+            !hubtelAmountMatchesExpected(expectedAmount, customerForMatch, confirmedSettlement)
+        ) {
+            console.error(
+                '[Hubtel Callback] AMOUNT MISMATCH! Expected:',
+                expectedAmount,
+                'customer:',
+                customerForMatch,
+                'settlement:',
+                confirmedSettlement,
+            );
+            await markCallbackProcessed(
+                callbackEvent.eventId,
+                'failed',
+                `Amount mismatch expected=${expectedAmount} customer=${customerForMatch} settlement=${confirmedSettlement}`
+            );
+            return NextResponse.json(
+                { success: false, message: 'Payment amount does not match expected charge' },
+                { status: 400 },
+            );
         }
 
         const { data: orderJson, error: updateError } = await supabaseAdmin.rpc('mark_order_paid', {

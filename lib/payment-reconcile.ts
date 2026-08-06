@@ -1,5 +1,10 @@
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { checkHubtelStatus, isHubtelPaid, isHubtelFailure } from '@/lib/hubtel';
+import {
+  checkHubtelStatus,
+  isHubtelPaid,
+  isHubtelFailure,
+  hubtelAmountMatchesExpected,
+} from '@/lib/hubtel';
 import { sendOrderConfirmation } from '@/lib/notifications';
 import { fireMetaPurchaseForOrder } from '@/lib/meta-purchase';
 
@@ -10,20 +15,6 @@ export type ReconcileItemResult = {
   message: string;
   total?: number;
 };
-
-function amountsMatch(expected: number, settlement: number | null, customerPaid: number | null): boolean {
-  if (settlement !== null && Math.abs(settlement - expected) <= 0.01) return true;
-  if (customerPaid !== null && Math.abs(customerPaid - expected) <= 0.01) return true;
-  // Customer-side fees: allow small surcharge above order total when settlement missing
-  if (
-    customerPaid !== null &&
-    customerPaid >= expected &&
-    customerPaid - expected <= Math.max(5, expected * 0.05)
-  ) {
-    return true;
-  }
-  return false;
-}
 
 async function markPaid(orderNumber: string, gatewayRef: string) {
   const { data: orderJson, error } = await supabaseAdmin.rpc('mark_order_paid', {
@@ -135,12 +126,18 @@ export async function reconcileHubtelOrder(order: {
       };
     }
 
-    if (!amountsMatch(expected, Number.isFinite(settlement as number) ? settlement : null, Number.isFinite(customerPaid as number) ? customerPaid : null)) {
+    if (
+      !hubtelAmountMatchesExpected(
+        expected,
+        Number.isFinite(customerPaid as number) ? customerPaid : null,
+        Number.isFinite(settlement as number) ? settlement : null,
+      )
+    ) {
       return {
         orderNumber,
         action: 'amount_mismatch',
         hubtelStatus: sStatus,
-        message: `Amount mismatch. Expected ${expected}, settlement ${settlement}, customer ${customerPaid}`,
+        message: `Amount mismatch. Expected ${expected}, customer ${customerPaid}, settlement ${settlement}`,
         total: expected,
       };
     }

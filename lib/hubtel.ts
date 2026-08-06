@@ -174,10 +174,9 @@ function normalizeStatusResponse(raw: any): HubtelStatusResult {
             currencyCode:
                 dataRaw.currencyCode ?? dataRaw.CurrencyCode ?? null,
             // Money fields: prefer the documented names, fall back to RMSC's names.
-            // `amount` is what the customer paid (may be > expected if Hubtel
-            // surcharges the customer on top of the merchant's price).
-            // `amountAfterCharges` is the merchant settlement — that's what we
-            // match against the expected order/deposit amount.
+            // `amount` / TransactionAmount = what the CUSTOMER paid (match order total).
+            // `amountAfterCharges` / AmountAfterFees = merchant settlement AFTER Hubtel fee
+            // (typically a few cedis below the order total — do NOT treat as the charge).
             amount: toNumber(
                 dataRaw.amount ?? dataRaw.Amount ?? dataRaw.TransactionAmount,
             ),
@@ -190,6 +189,47 @@ function normalizeStatusResponse(raw: any): HubtelStatusResult {
             isFulfilled: dataRaw.isFulfilled ?? dataRaw.IsFulfilled ?? null,
         },
     };
+}
+
+/**
+ * Match Hubtel money fields against the store order/deposit total.
+ * Prefer customer TransactionAmount; allow merchant AmountAfterFees slightly
+ * below expected (Hubtel fee), or a small customer-side surcharge above.
+ */
+export function hubtelAmountMatchesExpected(
+    expected: number,
+    customerPaid: number | null | undefined,
+    merchantSettlement: number | null | undefined,
+): boolean {
+    if (!(expected > 0)) return false;
+    const customer =
+        customerPaid !== null && customerPaid !== undefined && Number.isFinite(Number(customerPaid))
+            ? Number(customerPaid)
+            : null;
+    const settlement =
+        merchantSettlement !== null &&
+        merchantSettlement !== undefined &&
+        Number.isFinite(Number(merchantSettlement))
+            ? Number(merchantSettlement)
+            : null;
+
+    if (customer !== null && Math.abs(customer - expected) <= 0.01) return true;
+    if (
+        customer !== null &&
+        customer >= expected &&
+        customer - expected <= Math.max(5, expected * 0.05)
+    ) {
+        return true;
+    }
+    // Merchant settlement is order total minus Hubtel fee (~1–3%).
+    if (
+        settlement !== null &&
+        settlement <= expected + 0.01 &&
+        expected - settlement <= Math.max(15, expected * 0.05)
+    ) {
+        return true;
+    }
+    return false;
 }
 
 async function parseJsonOrThrow<T = unknown>(res: Response, label: string): Promise<T> {

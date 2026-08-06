@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { sendOrderConfirmation } from '@/lib/notifications';
 import { fireMetaPurchaseForOrder } from '@/lib/meta-purchase';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
-import { checkHubtelStatus, isHubtelPaid } from '@/lib/hubtel';
+import { checkHubtelStatus, isHubtelPaid, hubtelAmountMatchesExpected } from '@/lib/hubtel';
 
 /**
  * Server-side Hubtel verification, called from /order-success after the
@@ -85,25 +85,37 @@ export async function POST(req: Request) {
             orderNumber;
 
         let verified = false;
+        let customerPaid: number | null = null;
         let settlementAmount: number | null = null;
         try {
             const status = await checkHubtelStatus(hubtelRef);
             const sStatus = String(status?.data?.status || '').toLowerCase();
             verified = isHubtelPaid(sStatus, status?.responseCode);
-            const settlement = status?.data?.amountAfterCharges ?? status?.data?.amount;
-            if (settlement !== undefined && settlement !== null) {
-                const n = parseFloat(String(settlement));
+            if (status?.data?.amount !== undefined && status?.data?.amount !== null) {
+                const n = parseFloat(String(status.data.amount));
+                if (Number.isFinite(n)) customerPaid = n;
+            }
+            if (
+                status?.data?.amountAfterCharges !== undefined &&
+                status?.data?.amountAfterCharges !== null
+            ) {
+                const n = parseFloat(String(status.data.amountAfterCharges));
                 if (Number.isFinite(n)) settlementAmount = n;
             }
         } catch (e: any) {
             console.warn('[Hubtel Verify] Status API failed:', e?.message || e);
         }
 
-        if (verified && settlementAmount !== null && Math.abs(settlementAmount - expectedAmount) > 0.01) {
+        if (
+            verified &&
+            !hubtelAmountMatchesExpected(expectedAmount, customerPaid, settlementAmount)
+        ) {
             console.error(
                 '[Hubtel Verify] AMOUNT MISMATCH. Expected:',
                 expectedAmount,
-                'Got:',
+                'customer:',
+                customerPaid,
+                'settlement:',
                 settlementAmount,
             );
             verified = false;
