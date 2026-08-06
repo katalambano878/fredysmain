@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { fetchWithTimeout, withTimeout } from '@/lib/fetch-timeout';
+import { canAccessPath, firstAllowedAdminPath } from '@/lib/admin-permissions';
 
 export default function AdminLayout({
   children,
@@ -203,6 +204,15 @@ export default function AdminLayout({
     // Optional: Auto-close on resize to mobile? For now, leave as is.
   }, []);
 
+  // Staff/limited roles: block routes they don't have permission for
+  useEffect(() => {
+    if (!isAuthenticated || isLoading || userRole === 'admin') return;
+    if (pathname === '/admin/login') return;
+    if (!canAccessPath(userRole, rolePermissions, pathname)) {
+      router.replace(firstAllowedAdminPath(rolePermissions));
+    }
+  }, [isAuthenticated, isLoading, userRole, rolePermissions, pathname, router]);
+
   const [cacheCleared, setCacheCleared] = useState(false);
 
   const handleClearCache = async () => {
@@ -269,6 +279,12 @@ export default function AdminLayout({
       path: '/admin',
       exact: true,
       permissionKey: 'dashboard'
+    },
+    {
+      title: 'End of Day',
+      icon: 'ri-calendar-check-line',
+      path: '/admin/end-of-day',
+      permissionKey: 'end_of_day'
     },
     {
       title: 'Orders',
@@ -423,10 +439,11 @@ export default function AdminLayout({
   const visibleMenuItems = menuItems.filter(item => {
     if (item.moduleId && !enabledModules.includes(item.moduleId)) return false;
     if (userRole === 'admin') return true;
-    if (item.permissionKey && Object.keys(rolePermissions).length > 0) {
+    // Staff: fail closed — only show explicitly granted permissions
+    if (item.permissionKey) {
       return rolePermissions[item.permissionKey] === true;
     }
-    return true;
+    return false;
   });
 
   // POS gets a full-screen layout with no sidebar or header

@@ -16,6 +16,7 @@ interface Role {
 
 const PERMISSION_LABELS: Record<string, { label: string; icon: string; description: string }> = {
     dashboard: { label: 'Dashboard', icon: 'ri-dashboard-line', description: 'View the admin dashboard and KPIs' },
+    end_of_day: { label: 'End of Day', icon: 'ri-calendar-check-line', description: 'Daily sales, stock, website vs POS close report' },
     orders: { label: 'Orders', icon: 'ri-shopping-bag-line', description: 'View and manage customer orders' },
     pos: { label: 'POS System', icon: 'ri-store-3-line', description: 'Access the point of sale system' },
     products: { label: 'Products', icon: 'ri-box-3-line', description: 'Manage products, pricing, and images' },
