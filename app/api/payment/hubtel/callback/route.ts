@@ -130,6 +130,11 @@ export async function POST(req: Request) {
                 })
                 .eq('order_number', merchantOrderRef);
 
+            await markCallbackProcessed(
+                callbackEvent.eventId,
+                'processed',
+                'Payment not successful at gateway'
+            );
             return NextResponse.json({ success: false, message: 'Payment not successful' });
         }
 
@@ -149,7 +154,13 @@ export async function POST(req: Request) {
         }
 
         if (!serverConfirmed) {
-            console.error('[Hubtel Callback] Status endpoint did not confirm payment. Rejecting.');
+            // Keep order pending — reconciler / verify will retry. Do not leave callback "received" forever.
+            console.error('[Hubtel Callback] Status endpoint did not confirm payment. Leaving pending for reconcile.');
+            await markCallbackProcessed(
+                callbackEvent.eventId,
+                'failed',
+                'Status API did not confirm paid — retry via reconcile'
+            );
             return NextResponse.json(
                 { success: false, message: 'Payment not confirmed by gateway' },
                 { status: 400 },
@@ -158,16 +169,29 @@ export async function POST(req: Request) {
 
         const amountToCheck = confirmedSettlement ?? callbackAmount;
         if (amountToCheck !== null && Math.abs(amountToCheck - expectedAmount) > 0.01) {
-            console.error(
-                '[Hubtel Callback] AMOUNT MISMATCH! Expected:',
-                expectedAmount,
-                'Got:',
-                amountToCheck,
-            );
-            return NextResponse.json(
-                { success: false, message: 'Payment amount does not match expected charge' },
-                { status: 400 },
-            );
+            // Allow small customer-side fee surcharge when settlement missing
+            const surchargeOk =
+                confirmedSettlement === null &&
+                callbackAmount !== null &&
+                callbackAmount >= expectedAmount &&
+                callbackAmount - expectedAmount <= Math.max(5, expectedAmount * 0.05);
+            if (!surchargeOk) {
+                console.error(
+                    '[Hubtel Callback] AMOUNT MISMATCH! Expected:',
+                    expectedAmount,
+                    'Got:',
+                    amountToCheck,
+                );
+                await markCallbackProcessed(
+                    callbackEvent.eventId,
+                    'failed',
+                    `Amount mismatch expected=${expectedAmount} got=${amountToCheck}`
+                );
+                return NextResponse.json(
+                    { success: false, message: 'Payment amount does not match expected charge' },
+                    { status: 400 },
+                );
+            }
         }
 
         const { data: orderJson, error: updateError } = await supabaseAdmin.rpc('mark_order_paid', {

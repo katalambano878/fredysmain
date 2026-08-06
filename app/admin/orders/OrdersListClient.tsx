@@ -78,6 +78,8 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
   // POS sales are always paid at checkout, so the "Abandoned carts" tab is
   // meaningless in POS mode — we hide it and force the confirmed view.
   const [orderViewTab, setOrderViewTab] = useState<'confirmed' | 'abandoned'>('confirmed');
+  const [reconciling, setReconciling] = useState(false);
+  const [reconcileMsg, setReconcileMsg] = useState<string | null>(null);
   const [sendingPaymentLink, setSendingPaymentLink] = useState<string | null>(null);
   const [orderStats, setOrderStats] = useState<OrderStats[]>([
     { label: allStatsLabel, count: 0, status: 'all' },
@@ -470,16 +472,63 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
         </div>
       )}
 
-      {!isPosMode && orderViewTab === 'abandoned' && abandonedCount > 0 && (
+      {!isPosMode && orderViewTab === 'abandoned' && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <div className="flex items-start space-x-3">
-            <i className="ri-information-line text-xl text-amber-600 mt-0.5"></i>
-            <div>
-              <p className="text-sm font-semibold text-amber-800">Abandoned Carts</p>
-              <p className="text-sm text-amber-700 mt-1">
-                These orders were created but payment was not completed. You can resend payment links to customers.
-              </p>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div className="flex items-start space-x-3">
+              <i className="ri-information-line text-xl text-amber-600 mt-0.5"></i>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Unpaid / Abandoned</p>
+                <p className="text-sm text-amber-700 mt-1">
+                  Some customers may have paid on Hubtel while the store still shows pending.
+                  Use reconcile to check Hubtel and auto-mark those as paid.
+                </p>
+                {reconcileMsg && (
+                  <p className="text-xs text-amber-900 mt-2 font-medium">{reconcileMsg}</p>
+                )}
+              </div>
             </div>
+            <button
+              type="button"
+              disabled={reconciling}
+              onClick={async () => {
+                setReconciling(true);
+                setReconcileMsg(null);
+                try {
+                  const res = await fetch('/api/admin/payments/reconcile', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ days: 21, limit: 50 }),
+                  });
+                  const json = await res.json();
+                  if (!res.ok || !json.success) {
+                    throw new Error(json.error || 'Reconcile failed');
+                  }
+                  setReconcileMsg(
+                    `Checked ${json.checked} Hubtel order(s). Marked paid: ${json.markedPaid}.`
+                  );
+                  await fetchOrders();
+                } catch (e: any) {
+                  setReconcileMsg(e?.message || 'Reconcile failed');
+                } finally {
+                  setReconciling(false);
+                }
+              }}
+              className="shrink-0 px-4 py-2.5 rounded-lg bg-gray-900 text-white text-sm font-semibold disabled:opacity-50 whitespace-nowrap"
+            >
+              {reconciling ? (
+                <span className="inline-flex items-center gap-2">
+                  <i className="ri-loader-4-line animate-spin" />
+                  Checking Hubtel…
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-2">
+                  <i className="ri-refresh-line" />
+                  Reconcile Hubtel payments
+                </span>
+              )}
+            </button>
           </div>
         </div>
       )}

@@ -147,6 +147,34 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
     setReverifying(true);
     setReverifyResult(null);
     try {
+      const gateway = String(
+        order.metadata?.payment_gateway || order.payment_method || ''
+      ).toLowerCase();
+      const isHubtel = gateway.includes('hubtel') || Boolean(order.metadata?.hubtel_client_reference);
+
+      if (isHubtel) {
+        const res = await fetch('/api/admin/payments/reconcile', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderNumber: order.order_number }),
+        });
+        const json = await res.json();
+        const result = json.results?.[0];
+        if (result?.action === 'marked_paid') {
+          setReverifyResult('Payment confirmed at Hubtel and marked as paid.');
+          fetchOrderDetails();
+        } else if (json.success) {
+          setReverifyResult(
+            result?.message ||
+              'Hubtel has not confirmed this payment yet. You can Mark as Paid manually if you verified it in Hubtel.'
+          );
+        } else {
+          setReverifyResult(json.error || 'Hubtel reconcile failed.');
+        }
+        return;
+      }
+
       const res = await fetch('/api/payment/moolre/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -154,13 +182,15 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
       });
       const json = await res.json();
       if (json.success) {
-        setReverifyResult('✅ Payment verified! Order has been marked as paid.');
+        setReverifyResult('Payment verified! Order has been marked as paid.');
         fetchOrderDetails();
       } else {
-        setReverifyResult(`⚠️ Moolre could not confirm this payment automatically. Use "Mark as Paid" below to manually confirm it.`);
+        setReverifyResult(
+          'Moolre could not confirm this payment automatically. Use "Mark as Paid" below to manually confirm it.'
+        );
       }
     } catch (err) {
-      setReverifyResult('❌ Network error. Please try again.');
+      setReverifyResult('Network error. Please try again.');
     } finally {
       setReverifying(false);
     }
@@ -703,9 +733,9 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
                     className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 py-2.5 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
                   >
                     {reverifying ? (
-                      <><i className="ri-loader-4-line animate-spin"></i> Checking with Moolre...</>
+                      <><i className="ri-loader-4-line animate-spin"></i> Checking with payment gateway...</>
                     ) : (
-                      <><i className="ri-refresh-line"></i> Re-verify Payment with Moolre</>
+                      <><i className="ri-refresh-line"></i> Re-check payment with gateway</>
                     )}
                   </button>
                   {reverifyResult && (
