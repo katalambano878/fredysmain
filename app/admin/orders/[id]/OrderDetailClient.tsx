@@ -724,7 +724,6 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
                   )}
                 </button>
               )}
-              {/* Re-verify with Moolre API */}
               {order.payment_status !== 'paid' && (
                 <div className="mt-3">
                   <button
@@ -733,9 +732,13 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
                     className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 py-2.5 rounded-lg font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
                   >
                     {reverifying ? (
-                      <><i className="ri-loader-4-line animate-spin"></i> Checking with payment gateway...</>
+                      <><i className="ri-loader-4-line animate-spin"></i> Checking Hubtel…</>
+                    ) : String(order.metadata?.payment_gateway || order.payment_method || '')
+                        .toLowerCase()
+                        .includes('hubtel') || Boolean(order.metadata?.hubtel_client_reference) ? (
+                      <><i className="ri-refresh-line"></i> Re-check payment with Hubtel</>
                     ) : (
-                      <><i className="ri-refresh-line"></i> Re-check payment with gateway</>
+                      <><i className="ri-refresh-line"></i> Re-check payment with Moolre</>
                     )}
                   </button>
                   {reverifyResult && (
