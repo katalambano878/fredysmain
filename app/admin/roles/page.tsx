@@ -18,6 +18,11 @@ const PERMISSION_LABELS: Record<string, { label: string; icon: string; descripti
     dashboard: { label: 'Dashboard', icon: 'ri-dashboard-line', description: 'View the admin dashboard and KPIs' },
     end_of_day: { label: 'End of Day', icon: 'ri-calendar-check-line', description: 'Daily sales, stock, website vs POS close report' },
     orders: { label: 'Orders', icon: 'ri-shopping-bag-line', description: 'View and manage customer orders' },
+    preorders: {
+      label: 'Preorders',
+      icon: 'ri-time-line',
+      description: 'Website + phone/WhatsApp/custom made-to-order preorders',
+    },
     pos: { label: 'POS System', icon: 'ri-store-3-line', description: 'Access the point of sale system' },
     products: { label: 'Products', icon: 'ri-box-3-line', description: 'Manage products, pricing, and images' },
     categories: { label: 'Categories', icon: 'ri-folder-line', description: 'Manage product categories' },

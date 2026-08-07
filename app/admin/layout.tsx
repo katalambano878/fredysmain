@@ -303,13 +303,13 @@ export default function AdminLayout({
       title: 'Preorders',
       icon: 'ri-time-line',
       path: '/admin/preorders',
-      permissionKey: 'orders'
+      permissionKey: 'preorders'
     },
     {
       title: 'Gallery Preorders',
       icon: 'ri-image-line',
       path: '/admin/gallery-preorders',
-      permissionKey: 'orders'
+      permissionKey: 'preorders'
     },
     {
       title: 'POS System',
@@ -441,7 +441,10 @@ export default function AdminLayout({
     if (userRole === 'admin') return true;
     // Staff: fail closed — only show explicitly granted permissions
     if (item.permissionKey) {
-      return rolePermissions[item.permissionKey] === true;
+      if (rolePermissions[item.permissionKey] === true) return true;
+      // Preorders used to share the Orders permission
+      if (item.permissionKey === 'preorders' && rolePermissions.orders === true) return true;
+      return false;
     }
     return false;
   });

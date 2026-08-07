@@ -5,8 +5,9 @@ export function permissionForPath(pathname: string): string | null {
   if (pathname.startsWith('/admin/end-of-day')) return 'end_of_day';
   if (pathname.startsWith('/admin/orders')) return 'orders';
   if (pathname.startsWith('/admin/sales')) return 'pos';
-  if (pathname.startsWith('/admin/preorders')) return 'orders';
-  if (pathname.startsWith('/admin/gallery-preorders')) return 'orders';
+  // Prefer dedicated preorders key; fall back handled in canAccessPath
+  if (pathname.startsWith('/admin/preorders')) return 'preorders';
+  if (pathname.startsWith('/admin/gallery-preorders')) return 'preorders';
   if (pathname.startsWith('/admin/pos')) return 'pos';
   if (pathname.startsWith('/admin/products')) return 'products';
   if (pathname.startsWith('/admin/discounts')) return 'products';
@@ -42,7 +43,10 @@ export function canAccessPath(
     // Fail closed for staff without explicit permissions
     return role !== 'staff';
   }
-  return permissions[key] === true;
+  if (permissions[key] === true) return true;
+  // Preorders historically lived under Orders — keep working if only orders is set
+  if (key === 'preorders' && permissions.orders === true) return true;
+  return false;
 }
 
 /** First allowed admin landing page for limited staff */
