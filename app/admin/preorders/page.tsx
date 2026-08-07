@@ -246,27 +246,20 @@ export default function AdminPreordersPage() {
                 </div>
             )}
 
-            <div className="rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-white p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+            <div className="rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-white p-4">
                 <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700">
+                    <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
                         <i className="ri-customer-service-2-line text-xl" />
                     </div>
                     <div>
                         <p className="font-semibold text-gray-900">Replace the order book</p>
                         <p className="text-sm text-gray-600 mt-0.5">
-                            When a client wants a new dress that isn&apos;t on the site — or calls / WhatsApps —
-                            use <strong>New preorder</strong>. It lands here, stamps your login, and counts in
-                            End of Day once paid ({stats.staffCreated} staff-created so far).
+                            Phone, WhatsApp, walk-in, or a custom dress not on the site — use{' '}
+                            <strong>New preorder</strong> above. It stamps your login and counts in End of Day
+                            once paid ({stats.staffCreated} staff-created so far).
                         </p>
                     </div>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => setShowNew(true)}
-                    className="shrink-0 px-4 py-2.5 rounded-lg bg-gray-900 text-white text-sm font-semibold"
-                >
-                    Capture phone / custom order
-                </button>
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
