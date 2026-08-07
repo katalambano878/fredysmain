@@ -3,12 +3,14 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { moneyLabel } from '@/lib/format-money';
+import NewPreorderModal from '@/components/admin/NewPreorderModal';
 
 interface PreorderItem {
     quantity: number;
     product_name?: string;
     variant_name?: string | null;
     is_preorder?: boolean;
+    metadata?: any;
 }
 
 interface PreorderOrder {
@@ -26,6 +28,7 @@ interface PreorderOrder {
     metadata?: any;
     is_preorder?: boolean;
     order_items?: PreorderItem[];
+    staff?: { full_name?: string } | null;
 }
 
 const statusColors: Record<string, string> = {
@@ -75,12 +78,31 @@ function getCustomerName(order: PreorderOrder) {
     return 'Guest';
 }
 
+function sourceLabel(order: PreorderOrder): string | null {
+    const src = order.metadata?.order_source || order.metadata?.preorder_channel;
+    if (!src) {
+        if (order.metadata?.staff_created) return 'Staff';
+        return null;
+    }
+    const map: Record<string, string> = {
+        whatsapp: 'WhatsApp',
+        phone: 'Phone',
+        walk_in: 'Walk-in',
+        other: 'Other',
+        website: 'Website',
+    };
+    return map[String(src)] || String(src);
+}
+
 export default function AdminPreordersPage() {
     const [orders, setOrders] = useState<PreorderOrder[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | 'unpaid' | 'paid' | 'in_production' | 'ready'>('all');
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+    const [showNew, setShowNew] = useState(false);
+    const [sendingLink, setSendingLink] = useState<string | null>(null);
+    const [toast, setToast] = useState<string | null>(null);
 
     useEffect(() => {
         fetchPreorders();
@@ -89,7 +111,7 @@ export default function AdminPreordersPage() {
     async function fetchPreorders() {
         try {
             setLoading(true);
-            const res = await fetch('/api/admin/orders?preorder=1', { credentials: 'include' });
+            const res = await fetch('/api/admin/orders?preorder=1&limit=500', { credentials: 'include' });
             const json = await res.json();
             if (!res.ok) throw new Error(json.error || 'Failed to fetch preorders');
             setOrders(json.orders || []);
@@ -100,12 +122,50 @@ export default function AdminPreordersPage() {
         }
     }
 
+    async function resendPaymentLink(order: PreorderOrder) {
+        setSendingLink(order.id);
+        setToast(null);
+        try {
+            const { supabase } = await import('@/lib/supabase');
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch('/api/notifications', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+                },
+                body: JSON.stringify({
+                    type: 'payment_link',
+                    payload: order,
+                }),
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(json.error || 'Failed to send payment link');
+            setToast(`Payment link sent for ${order.order_number}`);
+        } catch (e: any) {
+            setToast(e?.message || 'Could not send payment link');
+        } finally {
+            setSendingLink(null);
+        }
+    }
+
     const stats = useMemo(() => {
         const paid = orders.filter((o) => o.payment_status === 'paid');
         const unpaid = orders.filter((o) => o.payment_status !== 'paid');
         const inProduction = paid.filter((o) => o.status === 'processing' || o.status === 'pending');
-        const ready = paid.filter((o) => o.status === 'shipped' || o.status === 'dispatched_to_rider' || o.status === 'delivered');
-        return { total: orders.length, paid: paid.length, unpaid: unpaid.length, inProduction: inProduction.length, ready: ready.length };
+        const ready = paid.filter((o) =>
+            o.status === 'shipped' || o.status === 'dispatched_to_rider' || o.status === 'delivered'
+        );
+        const staffCreated = orders.filter((o) => o.metadata?.staff_created).length;
+        return {
+            total: orders.length,
+            paid: paid.length,
+            unpaid: unpaid.length,
+            inProduction: inProduction.length,
+            ready: ready.length,
+            staffCreated,
+        };
     }, [orders]);
 
     const filtered = useMemo(() => {
@@ -113,15 +173,33 @@ export default function AdminPreordersPage() {
         return orders.filter((o) => {
             if (statusFilter === 'paid' && o.payment_status !== 'paid') return false;
             if (statusFilter === 'unpaid' && o.payment_status === 'paid') return false;
-            if (statusFilter === 'in_production' && !(o.payment_status === 'paid' && (o.status === 'pending' || o.status === 'processing'))) return false;
-            if (statusFilter === 'ready' && !(o.payment_status === 'paid' && (o.status === 'shipped' || o.status === 'dispatched_to_rider' || o.status === 'delivered'))) return false;
+            if (
+                statusFilter === 'in_production' &&
+                !(o.payment_status === 'paid' && (o.status === 'pending' || o.status === 'processing'))
+            ) {
+                return false;
+            }
+            if (
+                statusFilter === 'ready' &&
+                !(
+                    o.payment_status === 'paid' &&
+                    (o.status === 'shipped' ||
+                        o.status === 'dispatched_to_rider' ||
+                        o.status === 'delivered')
+                )
+            ) {
+                return false;
+            }
 
             if (!q) return true;
             const name = getCustomerName(o).toLowerCase();
+            const src = sourceLabel(o)?.toLowerCase() || '';
             return (
                 (o.order_number || '').toLowerCase().includes(q) ||
                 (o.email || '').toLowerCase().includes(q) ||
+                (o.phone || '').includes(q) ||
                 name.includes(q) ||
+                src.includes(q) ||
                 o.order_items?.some((it) => (it.product_name || '').toLowerCase().includes(q))
             );
         });
@@ -135,16 +213,59 @@ export default function AdminPreordersPage() {
                         <i className="ri-time-line text-amber-600"></i>
                         Preorders
                     </h1>
-                    <p className="text-gray-600 mt-1">
-                        Orders for out-of-stock items. Produce these, then mark them packaged or dispatched. Preorder items take 3–4 business days.
+                    <p className="text-gray-600 mt-1 max-w-2xl">
+                        Website out-of-stock checkouts <strong>and</strong> staff-entered phone / WhatsApp /
+                        custom made-to-order jobs. Produce these, then mark packaged or dispatched. Typical
+                        turnaround: 3–4 business days.
                     </p>
                 </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                        onClick={fetchPreorders}
+                        className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap cursor-pointer flex items-center gap-2"
+                    >
+                        <i className="ri-refresh-line"></i>
+                        Refresh
+                    </button>
+                    <button
+                        onClick={() => setShowNew(true)}
+                        className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap cursor-pointer flex items-center gap-2 shadow-sm"
+                    >
+                        <i className="ri-add-line"></i>
+                        New preorder
+                    </button>
+                </div>
+            </div>
+
+            {toast && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex justify-between gap-3">
+                    <span>{toast}</span>
+                    <button type="button" onClick={() => setToast(null)} className="text-amber-700 font-semibold">
+                        Dismiss
+                    </button>
+                </div>
+            )}
+
+            <div className="rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-white p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+                <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700">
+                        <i className="ri-customer-service-2-line text-xl" />
+                    </div>
+                    <div>
+                        <p className="font-semibold text-gray-900">Replace the order book</p>
+                        <p className="text-sm text-gray-600 mt-0.5">
+                            When a client wants a new dress that isn&apos;t on the site — or calls / WhatsApps —
+                            use <strong>New preorder</strong>. It lands here, stamps your login, and counts in
+                            End of Day once paid ({stats.staffCreated} staff-created so far).
+                        </p>
+                    </div>
+                </div>
                 <button
-                    onClick={fetchPreorders}
-                    className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors whitespace-nowrap cursor-pointer flex items-center gap-2"
+                    type="button"
+                    onClick={() => setShowNew(true)}
+                    className="shrink-0 px-4 py-2.5 rounded-lg bg-gray-900 text-white text-sm font-semibold"
                 >
-                    <i className="ri-refresh-line"></i>
-                    Refresh
+                    Capture phone / custom order
                 </button>
             </div>
 
@@ -160,7 +281,9 @@ export default function AdminPreordersPage() {
                         key={s.key}
                         onClick={() => setStatusFilter(s.key)}
                         className={`p-4 rounded-xl border-2 text-left cursor-pointer transition-all ${
-                            statusFilter === s.key ? 'border-amber-600 bg-amber-50' : 'border-gray-200 bg-white hover:border-gray-300'
+                            statusFilter === s.key
+                                ? 'border-amber-600 bg-amber-50'
+                                : 'border-gray-200 bg-white hover:border-gray-300'
                         }`}
                     >
                         <p className="text-2xl font-bold text-gray-900">{s.count}</p>
@@ -177,7 +300,7 @@ export default function AdminPreordersPage() {
                             type="text"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Search by order, customer, email or product..."
+                            placeholder="Search by order, customer, phone, source or product..."
                             className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-sm"
                         />
                     </div>
@@ -189,6 +312,7 @@ export default function AdminPreordersPage() {
                             <tr>
                                 <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Order ID</th>
                                 <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Customer</th>
+                                <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Source</th>
                                 <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Date</th>
                                 <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Preorder Items</th>
                                 <th className="text-left py-4 px-4 text-sm font-semibold text-gray-700">Total</th>
@@ -200,25 +324,43 @@ export default function AdminPreordersPage() {
                         <tbody>
                             {loading ? (
                                 <tr>
-                                    <td colSpan={8} className="py-12 text-center text-gray-500">
+                                    <td colSpan={9} className="py-12 text-center text-gray-500">
                                         <i className="ri-loader-4-line animate-spin text-3xl text-gray-900"></i>
                                         <p className="mt-2">Loading preorders...</p>
                                     </td>
                                 </tr>
                             ) : filtered.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="py-12 text-center text-gray-500">
+                                    <td colSpan={9} className="py-12 text-center text-gray-500">
                                         <i className="ri-time-line text-4xl text-gray-300"></i>
                                         <p className="mt-2">No preorders yet</p>
-                                        <p className="text-sm">Orders that include out-of-stock items will appear here.</p>
+                                        <p className="text-sm mb-4">
+                                            Website OOS checkouts or staff-entered phone/custom orders appear here.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowNew(true)}
+                                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold"
+                                        >
+                                            <i className="ri-add-line" /> Create first staff preorder
+                                        </button>
                                     </td>
                                 </tr>
                             ) : (
                                 filtered.map((order) => {
-                                    const preorderItems = (order.order_items || []).filter((i) => i.is_preorder !== false);
+                                    const preorderItems = (order.order_items || []).filter(
+                                        (i) => i.is_preorder !== false
+                                    );
                                     const isOpen = !!expanded[order.id];
+                                    const src = sourceLabel(order);
+                                    const deposit = Number(order.metadata?.deposit_amount) || 0;
+                                    const balance = Number(order.metadata?.balance_due);
+                                    const depositPaid = Boolean(order.metadata?.deposit_paid);
                                     return (
-                                        <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors align-top">
+                                        <tr
+                                            key={order.id}
+                                            className="border-b border-gray-100 hover:bg-gray-50 transition-colors align-top"
+                                        >
                                             <td className="py-4 px-4">
                                                 <Link
                                                     href={`/admin/orders/${order.id}`}
@@ -226,33 +368,84 @@ export default function AdminPreordersPage() {
                                                 >
                                                     {order.order_number || order.id.substring(0, 8)}
                                                 </Link>
+                                                {order.staff?.full_name && (
+                                                    <p className="text-[11px] text-gray-400 mt-0.5">
+                                                        by {order.staff.full_name}
+                                                    </p>
+                                                )}
                                             </td>
                                             <td className="py-4 px-4">
-                                                <p className="font-medium text-gray-900 whitespace-nowrap">{getCustomerName(order)}</p>
-                                                <p className="text-xs text-gray-500">{order.email}</p>
-                                                {order.phone && <p className="text-xs text-gray-500">{order.phone}</p>}
+                                                <p className="font-medium text-gray-900 whitespace-nowrap">
+                                                    {getCustomerName(order)}
+                                                </p>
+                                                {order.phone && (
+                                                    <p className="text-xs text-gray-500">{order.phone}</p>
+                                                )}
+                                                {order.email && !order.email.endsWith('.local') && (
+                                                    <p className="text-xs text-gray-500">{order.email}</p>
+                                                )}
                                             </td>
-                                            <td className="py-4 px-4 text-sm text-gray-700 whitespace-nowrap">{formatDate(order.created_at)}</td>
+                                            <td className="py-4 px-4">
+                                                {src ? (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-50 text-sky-800 border border-sky-200">
+                                                        {src}
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-50 text-gray-600 border border-gray-200">
+                                                        Website
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="py-4 px-4 text-sm text-gray-700 whitespace-nowrap">
+                                                {formatDate(order.created_at)}
+                                                {order.metadata?.promised_date && (
+                                                    <p className="text-[11px] text-amber-700 mt-0.5">
+                                                        Due {order.metadata.promised_date}
+                                                    </p>
+                                                )}
+                                            </td>
                                             <td className="py-4 px-4 text-sm text-gray-800 min-w-[220px]">
                                                 {preorderItems.length === 0 ? (
                                                     <span className="text-gray-400">—</span>
                                                 ) : (
                                                     <>
                                                         <button
-                                                            onClick={() => setExpanded((e) => ({ ...e, [order.id]: !isOpen }))}
+                                                            onClick={() =>
+                                                                setExpanded((e) => ({
+                                                                    ...e,
+                                                                    [order.id]: !isOpen,
+                                                                }))
+                                                            }
                                                             className="text-left font-medium text-amber-800 hover:underline"
                                                         >
-                                                            {preorderItems.length} item{preorderItems.length > 1 ? 's' : ''}{' '}
-                                                            <i className={`ri-arrow-down-s-line transition-transform ${isOpen ? 'rotate-180' : ''}`}></i>
+                                                            {preorderItems.length} item
+                                                            {preorderItems.length > 1 ? 's' : ''}{' '}
+                                                            <i
+                                                                className={`ri-arrow-down-s-line transition-transform ${
+                                                                    isOpen ? 'rotate-180' : ''
+                                                                }`}
+                                                            ></i>
                                                         </button>
                                                         {isOpen && (
                                                             <ul className="mt-2 space-y-1 text-xs">
                                                                 {preorderItems.map((it, idx) => (
                                                                     <li key={idx} className="flex items-start gap-2">
-                                                                        <span className="inline-block w-5 text-right text-gray-500">{it.quantity}×</span>
+                                                                        <span className="inline-block w-5 text-right text-gray-500">
+                                                                            {it.quantity}×
+                                                                        </span>
                                                                         <span>
                                                                             {it.product_name}
-                                                                            {it.variant_name && <span className="text-gray-500"> — {it.variant_name}</span>}
+                                                                            {it.variant_name && (
+                                                                                <span className="text-gray-500">
+                                                                                    {' '}
+                                                                                    — {it.variant_name}
+                                                                                </span>
+                                                                            )}
+                                                                            {it.metadata?.line_type === 'custom' && (
+                                                                                <span className="ml-1 text-amber-700 font-semibold">
+                                                                                    custom
+                                                                                </span>
+                                                                            )}
                                                                         </span>
                                                                     </li>
                                                                 ))}
@@ -263,36 +456,73 @@ export default function AdminPreordersPage() {
                                             </td>
                                             <td className="py-4 px-4 font-semibold text-gray-900 whitespace-nowrap">
                                                 {moneyLabel(order.total)}
+                                                {depositPaid &&
+                                                    order.payment_status !== 'paid' &&
+                                                    deposit > 0 && (
+                                                        <p className="text-[11px] font-normal text-amber-700 mt-0.5">
+                                                            Deposit {moneyLabel(deposit)}
+                                                            {Number.isFinite(balance) && balance > 0
+                                                                ? ` · bal ${moneyLabel(balance)}`
+                                                                : ''}
+                                                        </p>
+                                                    )}
                                             </td>
                                             <td className="py-4 px-4 text-sm whitespace-nowrap">
                                                 <span
                                                     className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${
                                                         order.payment_status === 'paid'
                                                             ? 'bg-green-50 text-green-700 border-green-200'
-                                                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                            : depositPaid
+                                                              ? 'bg-amber-50 text-amber-800 border-amber-300'
+                                                              : 'bg-amber-50 text-amber-700 border-amber-200'
                                                     }`}
                                                 >
-                                                    <i className={order.payment_status === 'paid' ? 'ri-checkbox-circle-line' : 'ri-time-line'}></i>
-                                                    {order.payment_status === 'paid' ? 'Paid' : 'Pending'}
+                                                    <i
+                                                        className={
+                                                            order.payment_status === 'paid'
+                                                                ? 'ri-checkbox-circle-line'
+                                                                : 'ri-time-line'
+                                                        }
+                                                    ></i>
+                                                    {order.payment_status === 'paid'
+                                                        ? 'Paid'
+                                                        : depositPaid
+                                                          ? 'Deposit'
+                                                          : 'Pending'}
                                                 </span>
                                             </td>
                                             <td className="py-4 px-4">
                                                 <span
                                                     className={`px-3 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${
-                                                        statusColors[order.status] || 'bg-gray-100 text-gray-700 border-gray-200'
+                                                        statusColors[order.status] ||
+                                                        'bg-gray-100 text-gray-700 border-gray-200'
                                                     }`}
                                                 >
                                                     {formatStatus(order.status)}
                                                 </span>
                                             </td>
                                             <td className="py-4 px-4">
-                                                <Link
-                                                    href={`/admin/orders/${order.id}`}
-                                                    className="inline-flex items-center gap-1 text-sm text-amber-700 hover:text-amber-900 font-medium"
-                                                >
-                                                    Open
-                                                    <i className="ri-arrow-right-line"></i>
-                                                </Link>
+                                                <div className="flex flex-col items-start gap-1.5">
+                                                    <Link
+                                                        href={`/admin/orders/${order.id}`}
+                                                        className="inline-flex items-center gap-1 text-sm text-amber-700 hover:text-amber-900 font-medium"
+                                                    >
+                                                        Open
+                                                        <i className="ri-arrow-right-line"></i>
+                                                    </Link>
+                                                    {order.payment_status !== 'paid' && (
+                                                        <button
+                                                            type="button"
+                                                            disabled={sendingLink === order.id}
+                                                            onClick={() => resendPaymentLink(order)}
+                                                            className="text-xs font-semibold text-sky-700 hover:text-sky-900 disabled:opacity-50"
+                                                        >
+                                                            {sendingLink === order.id
+                                                                ? 'Sending…'
+                                                                : 'Send pay link'}
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     );
@@ -310,6 +540,15 @@ export default function AdminPreordersPage() {
                     </div>
                 )}
             </div>
+
+            <NewPreorderModal
+                open={showNew}
+                onClose={() => setShowNew(false)}
+                onCreated={() => {
+                    setToast('Preorder created');
+                    fetchPreorders();
+                }}
+            />
         </div>
     );
 }

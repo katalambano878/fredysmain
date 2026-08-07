@@ -102,7 +102,9 @@ export async function GET(request: Request) {
         order_items (
           quantity,
           product_name,
-          is_preorder
+          variant_name,
+          is_preorder,
+          metadata
         )
       `, { count: 'exact' })
       .order('created_at', { ascending: false })
