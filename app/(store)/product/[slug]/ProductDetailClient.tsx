@@ -149,7 +149,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
             `related:${dataToTransform.category_id}:${dataToTransform.id}`,
             (() => supabase
               .from('products')
-              .select('*, product_images(url, position), product_variants(id, name, price, quantity)')
+              .select('*, product_images(url, position), product_variants(id, name, price, compare_at_price, quantity)')
               .eq('status', 'active')
               .eq('category_id', dataToTransform.category_id)
               .neq('id', dataToTransform.id)
@@ -217,6 +217,24 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
 
   // Determine the active price: variant price if selected, otherwise base price
   const activePrice = selectedVariant?.price ?? product?.price ?? 0;
+  const activeCompareAt = selectedVariant
+    ? Number(selectedVariant.compare_at_price) || 0
+    : Number(product?.compare_at_price) || 0;
+  // When no size picked yet, pair "From" sale price with that cheapest variant's original
+  const cheapestVariant = hasVariants
+    ? [...(product?.variants || [])]
+        .filter((v: any) => Number(v.price) > 0)
+        .sort((a: any, b: any) => Number(a.price) - Number(b.price))[0]
+    : null;
+  const minVariantCompare =
+    cheapestVariant &&
+    Number(cheapestVariant.compare_at_price) > Number(cheapestVariant.price)
+      ? Number(cheapestVariant.compare_at_price)
+      : 0;
+  const displayCompareAt =
+    hasVariants && !selectedVariant
+      ? minVariantCompare || activeCompareAt
+      : activeCompareAt;
   const activeStock = selectedVariant ? (selectedVariant.stock ?? selectedVariant.quantity ?? product?.stockCount ?? 0) : (product?.stockCount ?? 0);
 
   const isPreorder = activeStock === 0;
@@ -285,7 +303,10 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
     );
   }
 
-  const discount = product.compare_at_price ? Math.round((1 - activePrice / product.compare_at_price) * 100) : 0;
+  const discount =
+    displayCompareAt > activePrice
+      ? Math.round((1 - activePrice / displayCompareAt) * 100)
+      : 0;
   const minVariantPrice = hasVariants ? Math.min(...product.variants.map((v: any) => v.price || product.price)) : product.price;
 
   const productSchema = generateProductSchema({
@@ -441,8 +462,17 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
                   ) : (
                     <span className="text-3xl lg:text-4xl font-bold text-gray-900">GH₵{activePrice.toFixed(2)}</span>
                   )}
-                  {product.compare_at_price && product.compare_at_price > activePrice && (
-                    <span className="text-xl text-gray-400 line-through">GH₵{product.compare_at_price.toFixed(2)}</span>
+                  {displayCompareAt > 0 &&
+                    displayCompareAt >
+                      (hasVariants && !selectedVariant ? minVariantPrice : activePrice) && (
+                    <span className="text-xl text-gray-400 line-through">
+                      GH₵{displayCompareAt.toFixed(2)}
+                    </span>
+                  )}
+                  {discount > 0 && (
+                    <span className="text-sm font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded">
+                      -{discount}%
+                    </span>
                   )}
                 </div>
 

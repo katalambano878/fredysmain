@@ -152,9 +152,24 @@ function ShopContent() {
           const formattedProducts = filtered.map((p: any) => {
             const variants = p.product_variants || [];
             const hasVariants = variants.length > 0;
-            const minVariantPrice = hasVariants
-              ? Math.min(...variants.map((v: any) => v.price || p.price))
+            const pricedVariants = hasVariants
+              ? variants.filter((v: any) => Number(v.price) > 0)
+              : [];
+            const minVariantPrice = pricedVariants.length
+              ? Math.min(...pricedVariants.map((v: any) => Number(v.price)))
               : undefined;
+            const cheapestOnSale = pricedVariants
+              .filter((v: any) => Number(v.compare_at_price) > Number(v.price))
+              .sort((a: any, b: any) => Number(a.price) - Number(b.price))[0];
+            const variantOriginal = cheapestOnSale
+              ? Number(cheapestOnSale.compare_at_price)
+              : undefined;
+            const productOnSale =
+              Number(p.compare_at_price) > Number(p.price) && Number(p.price) > 0;
+            const originalPrice = productOnSale
+              ? Number(p.compare_at_price)
+              : variantOriginal;
+            const onSale = productOnSale || Boolean(variantOriginal);
             const totalVariantStock = hasVariants
               ? variants.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0)
               : 0;
@@ -176,11 +191,11 @@ function ShopContent() {
               slug: p.slug,
               name: p.name,
               price: p.price,
-              originalPrice: p.compare_at_price,
+              originalPrice,
               image: p.product_images?.[0]?.url || '/frebys-logo.png',
               rating: p.rating_avg || 0,
               reviewCount: 0,
-              badge: p.compare_at_price > p.price ? 'Sale' : undefined,
+              badge: onSale ? 'Sale' : undefined,
               inStock: effectiveStock > 0,
               maxStock: effectiveStock || 50,
               moq: p.moq || 1,

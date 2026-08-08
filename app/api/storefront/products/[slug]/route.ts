@@ -27,7 +27,7 @@ export async function GET(
       .select(`
         *,
         categories(name, slug),
-        product_variants(id, name, price, quantity, option1, option2, image_url, metadata, sort_order),
+        product_variants(id, name, price, compare_at_price, quantity, option1, option2, image_url, metadata, sort_order),
         product_images(url, position, alt_text, media_type)
       `)
       .eq('status', 'active');

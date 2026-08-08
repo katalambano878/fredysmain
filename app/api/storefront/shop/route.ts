@@ -54,7 +54,7 @@ export async function GET(request: Request) {
           id, name, slug, price, compare_at_price, quantity, moq, rating_avg, status, created_at,
           categories!inner(id, name, slug, parent_id),
           product_images(url, position),
-          product_variants(id, name, price, quantity, option1, option2)
+          product_variants(id, name, price, compare_at_price, quantity, option1, option2)
         `,
           { count: 'exact' }
         )

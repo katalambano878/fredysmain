@@ -31,7 +31,7 @@ export async function GET(request: Request) {
                 id, name, slug, price, compare_at_price, quantity, featured, rating_avg, review_count, moq,
                 categories(id, name, slug),
                 product_images(url, position),
-                product_variants(id, name, price, quantity, option1, option2)
+                product_variants(id, name, price, compare_at_price, quantity, option1, option2)
             `)
             .order('created_at', { ascending: false })
             .eq('status', 'active');
