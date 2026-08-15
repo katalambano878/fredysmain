@@ -3,7 +3,13 @@ import { supabase } from '@/lib/supabase';
 import { escapeHtml } from '@/lib/sanitize';
 
 const resend = new Resend(process.env.RESEND_API_KEY || 'missing_api_key');
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@frebysfashion.com';
+/** Comma-separated list supported, e.g. owner@gmail.com,info@store.com */
+const ADMIN_EMAILS = (process.env.ADMIN_EMAIL || 'admin@frebysfashion.com')
+    .split(',')
+    .map((e) => e.trim())
+    .filter(Boolean);
+/** Admin SMS for new orders — CONTACT_PHONE, or ADMIN_SMS_PHONE override */
+const ADMIN_SMS_PHONE = (process.env.ADMIN_SMS_PHONE || process.env.CONTACT_PHONE || '0244720197').trim();
 const EMAIL_FROM = process.env.EMAIL_FROM || 'Freby’s Fashion GH <noreply@frebysfashion.com>';
 const BRAND = {
     name: 'Freby’s Fashion GH',
@@ -110,19 +116,27 @@ export async function sendNewsletterWelcome(email: string) {
     });
 }
 
-export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
+export async function sendEmail({ to, subject, html }: { to: string | string[]; subject: string; html: string }) {
     if (!process.env.RESEND_API_KEY) {
         console.warn('[Email] RESEND_API_KEY not configured');
+        return null;
+    }
+    const recipients = (Array.isArray(to) ? to : [to]).map((e) => e.trim()).filter(Boolean);
+    if (recipients.length === 0) {
+        console.warn('[Email] No recipients');
         return null;
     }
     try {
         const data = await resend.emails.send({
             from: EMAIL_FROM,
-            to,
+            to: recipients,
             subject,
             html,
         });
-        console.log('[Email] Sent successfully to:', to.split('@')[0] + '@***');
+        console.log(
+            '[Email] Sent successfully to:',
+            recipients.map((e) => e.split('@')[0] + '@***').join(', ')
+        );
         return data;
     } catch (error: any) {
         console.error('[Email] Failed:', error.message);
@@ -319,7 +333,7 @@ ${emailButton('View Order in Admin', `${baseUrl}/admin/orders/${id}`)}
 `, `New order #${order_number} from ${name}`);
 
     await sendEmail({
-        to: ADMIN_EMAIL,
+        to: ADMIN_EMAILS,
         subject: `New Order #${order_number || id}`,
         html: adminEmailHtml
     });
@@ -333,6 +347,15 @@ ${emailButton('View Order in Admin', `${baseUrl}/admin/orders/${id}`)}
         await sendSMS({
             to: phone,
             message: smsMessage
+        });
+    }
+
+    // 4. SMS to Admin (store contact / ADMIN_SMS_PHONE)
+    if (ADMIN_SMS_PHONE) {
+        const adminSms = `New Frebys order #${order_number || id} from ${name}. Total GH₵${Number(total).toFixed(2)}.${phone ? ` Customer: ${phone}.` : ''} Open: ${baseUrl}/admin/orders/${id}`;
+        await sendSMS({
+            to: ADMIN_SMS_PHONE,
+            message: adminSms
         });
     }
 }
@@ -576,7 +599,7 @@ export async function sendContactMessage(data: { name: string, email: string, su
 
     // 2. Alert Admin
     await sendEmail({
-        to: ADMIN_EMAIL,
+        to: ADMIN_EMAILS,
         subject: `Contact: ${subject}`,
         html: emailLayout(`
 <h2 style="margin:0 0 16px;color:#111827;font-size:20px;">&#128233; New Contact Message</h2>
