@@ -8,8 +8,11 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAIL || 'admin@frebysfashion.com')
     .split(',')
     .map((e) => e.trim())
     .filter(Boolean);
-/** Admin SMS for new orders — CONTACT_PHONE, or ADMIN_SMS_PHONE override */
-const ADMIN_SMS_PHONE = (process.env.ADMIN_SMS_PHONE || process.env.CONTACT_PHONE || '0244720197').trim();
+/** Admin SMS for new orders — comma-separated. ADMIN_SMS_PHONE overrides; else CONTACT_PHONE. */
+const ADMIN_SMS_PHONES = (process.env.ADMIN_SMS_PHONE || process.env.CONTACT_PHONE || '0244720197')
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
 const EMAIL_FROM = process.env.EMAIL_FROM || 'Freby’s Fashion GH <noreply@frebysfashion.com>';
 const BRAND = {
     name: 'Freby’s Fashion GH',
@@ -350,13 +353,17 @@ ${emailButton('View Order in Admin', `${baseUrl}/admin/orders/${id}`)}
         });
     }
 
-    // 4. SMS to Admin (store contact / ADMIN_SMS_PHONE)
-    if (ADMIN_SMS_PHONE) {
+    // 4. SMS to Admin phones (CONTACT_PHONE / ADMIN_SMS_PHONE, comma-separated)
+    if (ADMIN_SMS_PHONES.length > 0) {
         const adminSms = `New Frebys order #${order_number || id} from ${name}. Total GH₵${Number(total).toFixed(2)}.${phone ? ` Customer: ${phone}.` : ''} Open: ${baseUrl}/admin/orders/${id}`;
-        await sendSMS({
-            to: ADMIN_SMS_PHONE,
-            message: adminSms
-        });
+        await Promise.all(
+            ADMIN_SMS_PHONES.map((adminPhone) =>
+                sendSMS({
+                    to: adminPhone,
+                    message: adminSms,
+                })
+            )
+        );
     }
 }
 
