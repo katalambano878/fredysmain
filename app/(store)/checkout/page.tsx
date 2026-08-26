@@ -19,7 +19,7 @@ import { trackInitiateCheckout } from '@/lib/meta-pixel';
 export default function CheckoutPage() {
   usePageTitle('Checkout');
   const router = useRouter();
-  const { cart, subtotal: cartSubtotal, clearCart, isHydrated } = useCart();
+  const { cart, subtotal: cartSubtotal, clearCart, isHydrated, syncCartPrices } = useCart();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -130,6 +130,12 @@ export default function CheckoutPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentStep]);
+
+  // Refresh live sale prices before checkout totals / payment
+  useEffect(() => {
+    if (!isHydrated || cart.length === 0) return;
+    void syncCartPrices();
+  }, [isHydrated, syncCartPrices]);
 
   // Meta Pixel + CAPI: InitiateCheckout once per checkout page visit
   const initiateCheckoutTracked = useRef(false);

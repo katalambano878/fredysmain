@@ -243,10 +243,25 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   const PREORDER_MAX = 50;
   const effectiveMaxStock = isPreorder ? PREORDER_MAX : activeStock;
 
+  // Auto-select when there is only one purchasable variant (e.g. Age 9 only)
+  useEffect(() => {
+    if (!product?.variants?.length || selectedVariant) return;
+    if (product.colors?.length) return; // color flow handles its own selection
+    if (product.variants.length === 1) {
+      setSelectedVariant(product.variants[0]);
+      setSelectedSize(product.variants[0].name || '');
+    }
+  }, [product, selectedVariant]);
+
   const handleAddToCart = () => {
     if (!product) return;
     if (needsVariantSelection) return; // Safety check
     if (needsColorSelection) return;
+
+    const unitPrice = Number(
+      selectedVariant?.price ?? (hasVariants ? NaN : product.price)
+    );
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) return;
 
     // Build variant display string: "Color / Name" or just "Name" or just "Color"
     let variantLabel: string | undefined;
@@ -263,7 +278,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
     addToCart({
       id: product.id,
       name: product.name,
-      price: activePrice,
+      price: unitPrice,
       image: selectedVariant?.image_url || product.images[0],
       quantity: quantity,
       variant: variantLabel,
@@ -303,11 +318,13 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
     );
   }
 
-  const discount =
-    displayCompareAt > activePrice
-      ? Math.round((1 - activePrice / displayCompareAt) * 100)
-      : 0;
   const minVariantPrice = hasVariants ? Math.min(...product.variants.map((v: any) => v.price || product.price)) : product.price;
+  const displayedSalePrice =
+    hasVariants && !selectedVariant ? Number(minVariantPrice) || 0 : Number(activePrice) || 0;
+  const discount =
+    displayCompareAt > displayedSalePrice && displayedSalePrice > 0
+      ? Math.round((1 - displayedSalePrice / displayCompareAt) * 100)
+      : 0;
 
   const productSchema = generateProductSchema({
     name: product.name,

@@ -6,6 +6,7 @@ import {
     useEffect,
     useRef,
     useState,
+    useCallback,
     ReactNode,
 } from 'react';
 import { trackAddToCart } from '@/lib/meta-pixel';
@@ -31,6 +32,8 @@ type CartContextType = {
     removeFromCart: (itemId: string, variant?: string) => void;
     updateQuantity: (itemId: string, quantity: number, variant?: string) => void;
     clearCart: () => void;
+    /** Re-fetch live sale prices for cart lines (variants / products). */
+    syncCartPrices: () => Promise<void>;
     cartCount: number;
     subtotal: number;
     isCartOpen: boolean;
@@ -115,11 +118,22 @@ function mergeAdd(prevCart: CartItem[], newItem: CartItem): CartItem[] {
     if (existingItemIndex > -1) {
         const next = [...prevCart];
         const existingItem = next[existingItemIndex];
+        const maxStock = newItem.maxStock || existingItem.maxStock || 50;
         const newQuantity = Math.min(
             existingItem.quantity + newItem.quantity,
-            existingItem.maxStock || newItem.maxStock || 50
+            maxStock
         );
-        next[existingItemIndex] = { ...existingItem, quantity: newQuantity };
+        // Always refresh price/stock from the latest add — sale prices change in admin
+        next[existingItemIndex] = {
+            ...existingItem,
+            quantity: newQuantity,
+            price: Number(newItem.price) >= 0 ? Number(newItem.price) : existingItem.price,
+            maxStock,
+            variantId: newItem.variantId || existingItem.variantId,
+            image: newItem.image || existingItem.image,
+            isPreorder: newItem.isPreorder ?? existingItem.isPreorder,
+            moq: newItem.moq ?? existingItem.moq,
+        };
         return next;
     }
     return [...prevCart, newItem];
@@ -196,6 +210,78 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setCart([]);
     };
 
+    const syncCartPrices = useCallback(async () => {
+        const current = cartRef.current;
+        if (current.length === 0) return;
+
+        const next = await Promise.all(
+            current.map(async (item) => {
+                const slugOrId = item.slug || item.id;
+                if (!slugOrId) return item;
+                try {
+                    const res = await fetch(
+                        `/api/storefront/products/${encodeURIComponent(slugOrId)}`,
+                        { cache: 'no-store' }
+                    );
+                    if (!res.ok) return item;
+                    const data = await res.json();
+                    const product = data?.product || data;
+                    if (!product) return item;
+
+                    const variants = product.product_variants || product.variants || [];
+                    let livePrice = Number(product.price);
+                    let liveStock = Number(product.quantity ?? product.stockCount ?? item.maxStock);
+
+                    if (item.variantId && Array.isArray(variants)) {
+                        const v = variants.find((x: any) => String(x.id) === String(item.variantId));
+                        if (v) {
+                            livePrice = Number(v.price);
+                            liveStock = Number(v.quantity ?? v.stock ?? liveStock);
+                        }
+                    } else if (item.variant && Array.isArray(variants) && variants.length > 0) {
+                        const want = String(item.variant).trim().toLowerCase();
+                        const v = variants.find((x: any) => {
+                            const label = [x.name, x.option1, x.option2]
+                                .filter(Boolean)
+                                .join(' / ')
+                                .toLowerCase();
+                            const name = String(x.name || '').toLowerCase();
+                            const tail = want.includes(' / ') ? want.split(' / ').pop()?.trim() : want;
+                            return label === want || name === want || (tail && (name === tail || String(x.option1 || '').toLowerCase() === tail));
+                        });
+                        if (v) {
+                            livePrice = Number(v.price);
+                            liveStock = Number(v.quantity ?? v.stock ?? liveStock);
+                        }
+                    }
+
+                    if (!(livePrice > 0)) return item;
+                    return {
+                        ...item,
+                        price: livePrice,
+                        maxStock: Number.isFinite(liveStock) && liveStock >= 0 ? liveStock : item.maxStock,
+                    };
+                } catch {
+                    return item;
+                }
+            })
+        );
+
+        const changed = next.some(
+            (item, i) => item.price !== current[i].price || item.maxStock !== current[i].maxStock
+        );
+        if (!changed) return;
+        cartRef.current = next;
+        persistCart(next);
+        setCart(next);
+    }, []);
+
+    // After hydrate, refresh sale prices so old carts don't keep pre-sale amounts
+    useEffect(() => {
+        if (!isHydrated || cartRef.current.length === 0) return;
+        void syncCartPrices();
+    }, [isHydrated, syncCartPrices]);
+
     const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
     const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
@@ -207,6 +293,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
                 removeFromCart,
                 updateQuantity,
                 clearCart,
+                syncCartPrices,
                 cartCount,
                 subtotal,
                 isCartOpen,

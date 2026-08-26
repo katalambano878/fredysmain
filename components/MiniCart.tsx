@@ -12,12 +12,18 @@ interface MiniCartProps {
 }
 
 export default function MiniCart({ isOpen, onClose }: MiniCartProps) {
-  const { cart, removeFromCart, updateQuantity, subtotal } = useCart();
+  const { cart, removeFromCart, updateQuantity, subtotal, syncCartPrices } = useCart();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // When cart opens, refresh prices so sale discounts aren't stuck at old cart amounts
+  useEffect(() => {
+    if (!isOpen) return;
+    void syncCartPrices();
+  }, [isOpen, syncCartPrices]);
 
   // Lock body scroll when cart is open
   useEffect(() => {
