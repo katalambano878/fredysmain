@@ -15,7 +15,8 @@ export async function GET() {
       .from('homepage_gallery')
       .select('id, title, caption, image_url, sort_order')
       .eq('is_active', true)
-      .order('sort_order', { ascending: true });
+      .order('sort_order', { ascending: false })
+      .order('created_at', { ascending: false });
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

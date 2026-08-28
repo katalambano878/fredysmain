@@ -114,7 +114,11 @@ export default function HomepageGalleryAdminPage() {
   };
 
   const move = async (rowId: string, dir: -1 | 1) => {
-    const sorted = [...items].sort((a, b) => a.sort_order - b.sort_order);
+    // Display order: highest sort_order first (newest on top)
+    const sorted = [...items].sort((a, b) => {
+      if (b.sort_order !== a.sort_order) return b.sort_order - a.sort_order;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
     const i = sorted.findIndex((x) => x.id === rowId);
     if (i < 0) return;
     const j = i + dir;
@@ -166,7 +170,10 @@ export default function HomepageGalleryAdminPage() {
     }
   };
 
-  const sorted = [...items].sort((a, b) => a.sort_order - b.sort_order);
+  const sorted = [...items].sort((a, b) => {
+    if (b.sort_order !== a.sort_order) return b.sort_order - a.sort_order;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
