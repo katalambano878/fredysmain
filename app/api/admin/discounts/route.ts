@@ -213,47 +213,70 @@ export async function POST(req: NextRequest) {
     const updates: { id: string; name: string; original: number; discounted: number }[] = [];
     let failed = 0;
     let variantsUpdated = 0;
+    const existingCampaign = await getCampaign();
 
     for (const product of products) {
-      const originalPrice =
-        product.compare_at_price && product.compare_at_price > product.price
-          ? product.compare_at_price
-          : product.price;
+      const currentPrice = Number(product.price) || 0;
+      const currentCompare = Number(product.compare_at_price) || 0;
+      const hasCompare = currentCompare > currentPrice && currentCompare > 0;
 
-      let discountedPrice: number;
-      if (type === 'percent') {
-        discountedPrice = +(originalPrice * (1 - value / 100)).toFixed(2);
-      } else {
-        discountedPrice = +(originalPrice - value).toFixed(2);
-      }
-      if (discountedPrice < 0) discountedPrice = 0;
-
-      // Only rewrite base product price when it actually has a price
-      if (originalPrice > 0) {
-        const { error: updateError } = await supabaseAdmin
-          .from('products')
-          .update({ price: discountedPrice, compare_at_price: originalPrice })
-          .eq('id', product.id);
-
-        if (updateError) {
-          failed++;
-          console.error(`[discounts] failed to update ${product.id}:`, updateError);
-          continue;
-        }
-        updates.push({
-          id: product.id,
-          name: product.name,
-          original: originalPrice,
-          discounted: discountedPrice,
-        });
-      } else {
-        // Mark product as in campaign even if price is on variants only
+      if (!hasCompare && currentPrice > 0 && existingCampaign.active) {
+        console.warn(
+          `[discounts] skip product ${product.id}: missing compare_at while campaign active`
+        );
         updates.push({
           id: product.id,
           name: product.name,
           original: 0,
           discounted: 0,
         });
+      } else {
+        const originalPrice = hasCompare ? currentCompare : currentPrice;
+
+        let discountedPrice: number;
+        if (type === 'percent') {
+          discountedPrice = +(originalPrice * (1 - value / 100)).toFixed(2);
+        } else {
+          discountedPrice = +(originalPrice - value).toFixed(2);
+        }
+        if (discountedPrice < 0) discountedPrice = 0;
+
+        // Only rewrite base product price when it actually has a price
+        if (originalPrice > 0) {
+          if (!(hasCompare && Math.abs(currentPrice - discountedPrice) < 0.01)) {
+            const { error: updateError } = await supabaseAdmin
+              .from('products')
+              .update({ price: discountedPrice, compare_at_price: originalPrice })
+              .eq('id', product.id);
+
+            if (updateError) {
+              failed++;
+              console.error(`[discounts] failed to update ${product.id}:`, updateError);
+            } else {
+              updates.push({
+                id: product.id,
+                name: product.name,
+                original: originalPrice,
+                discounted: discountedPrice,
+              });
+            }
+          } else {
+            updates.push({
+              id: product.id,
+              name: product.name,
+              original: originalPrice,
+              discounted: discountedPrice,
+            });
+          }
+        } else {
+          // Mark product as in campaign even if price is on variants only
+          updates.push({
+            id: product.id,
+            name: product.name,
+            original: 0,
+            discounted: 0,
+          });
+        }
       }
 
       // Discount variants (Age sizes, etc.)
@@ -263,16 +286,32 @@ export async function POST(req: NextRequest) {
         .eq('product_id', product.id);
 
       for (const variant of variants || []) {
-        const vOriginal =
-          variant.compare_at_price && variant.compare_at_price > variant.price
-            ? variant.compare_at_price
-            : Number(variant.price) || 0;
+        const vPrice = Number(variant.price) || 0;
+        const vCompare = Number(variant.compare_at_price) || 0;
+
+        // Prefer existing compare_at as the true original (prevents stacking)
+        const vHasCompare = vCompare > vPrice && vCompare > 0;
+        if (!vHasCompare && existingCampaign.active) {
+          // Sale already running but this row has no original — price may already
+          // be discounted. Do NOT use current price as a new original (stack risk).
+          console.warn(
+            `[discounts] skip variant ${variant.id}: missing compare_at while campaign active`
+          );
+          continue;
+        }
+
+        const vOriginal = vHasCompare ? vCompare : vPrice;
         if (!(vOriginal > 0)) continue;
 
         const vDiscounted =
           type === 'percent'
             ? +(vOriginal * (1 - value / 100)).toFixed(2)
             : +Math.max(0, vOriginal - value).toFixed(2);
+
+        // Already at the correct sale price for this original — no-op
+        if (vHasCompare && Math.abs(vPrice - vDiscounted) < 0.01) {
+          continue;
+        }
 
         const { error: vErr } = await supabaseAdmin
           .from('product_variants')
