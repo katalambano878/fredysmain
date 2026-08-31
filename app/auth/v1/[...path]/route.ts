@@ -142,7 +142,8 @@ export async function POST(
   }
 
   if (slug === "logout") {
-    return NextResponse.json({}, { status: 204, headers: cors() });
+    // 204 must not include a body (NextResponse.json throws Invalid response status code 204)
+    return new NextResponse(null, { status: 204, headers: cors() });
   }
 
   if (slug === "recover") {
