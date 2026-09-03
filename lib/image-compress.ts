@@ -14,10 +14,26 @@ export async function compressImageBuffer(
     return { buffer: input, contentType };
   }
 
+  const isHeic = ct.includes('heic') || ct.includes('heif');
+
   try {
     let pipeline = sharp(input, { failOn: 'none' }).rotate();
     const meta = await pipeline.metadata();
-    if (!meta.width) return { buffer: input, contentType };
+    if (!meta.width) {
+      if (isHeic) {
+        try {
+          const buffer = await sharp(input, { failOn: 'none' })
+            .rotate()
+            .resize(MAX_DIMENSION, MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })
+            .webp({ quality: WEBP_QUALITY })
+            .toBuffer();
+          return { buffer, contentType: 'image/webp', ext: 'webp' };
+        } catch {
+          return { buffer: input, contentType };
+        }
+      }
+      return { buffer: input, contentType };
+    }
 
     if (
       (meta.width && meta.width > MAX_DIMENSION) ||
@@ -44,7 +60,7 @@ export async function compressImageBuffer(
       return { buffer, contentType: 'image/webp', ext: 'webp' };
     }
 
-    if (ct.includes('jpeg') || ct.includes('jpg')) {
+    if (ct.includes('jpeg') || ct.includes('jpg') || isHeic) {
       const jpeg = await sharp(input, { failOn: 'none' })
         .rotate()
         .resize(MAX_DIMENSION, MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })

@@ -843,13 +843,10 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any; count: number
         let related: Row[] = [];
         if (parentIds.length) {
           const ph = parentIds.map((_, i) => `$${i + 1}`).join(",");
-          // Prefer stable gallery order only when the embed table actually has
-          // a position column. Ordering every `*` reverse-embed by position
-          // breaks tables like product_variants (no position) and empties
-          // homepage/shop product fetches that embed variants.
-          const orderBy =
-            embed.select.columns.includes("position") ||
-            (embed.select.star && EMBED_TABLES_WITH_POSITION.has(embedTable))
+          // Always order known gallery/list tables by position — even when the
+          // select only asks for `url` (POS used to pick an arbitrary first row).
+          // Do NOT apply to tables outside this set (e.g. product_variants).
+          const orderBy = EMBED_TABLES_WITH_POSITION.has(embedTable)
               ? ` ORDER BY ${ident("position")} ASC NULLS LAST`
               : "";
           const res = await pool.query(

@@ -364,7 +364,7 @@ export default function POSPage() {
             setLoading(true);
             const { data: prodData } = await supabase
                 .from('products')
-                .select(`id, name, price, quantity, sku, metadata, categories(name), product_images(url), product_variants(id, name, price, quantity, option1, option2, image_url, sort_order)`)
+                .select(`id, name, price, quantity, sku, metadata, categories(name), product_images(url, position, media_type), product_variants(id, name, price, quantity, option1, option2, image_url, sort_order)`)
                 .eq('status', 'active')
                 .order('name');
 
@@ -389,13 +389,21 @@ export default function POSPage() {
                         ? variants.reduce((sum, v) => sum + (v.quantity || 0), 0)
                         : Number(p.quantity ?? 0) || 0;
 
+                    const gallery = Array.isArray(p.product_images) ? [...p.product_images] : [];
+                    gallery.sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0));
+                    const primaryImage =
+                        gallery.find((img: any) => img?.url && img.media_type !== 'video')?.url ||
+                        gallery.find((img: any) => img?.url)?.url ||
+                        variants.find((v) => v.image_url)?.image_url ||
+                        '';
+
                     return {
                         id: p.id,
                         name: p.name,
                         price: p.price,
                         quantity: effectiveQuantity,
                         category: p.categories?.name || 'Uncategorized',
-                        image: p.product_images?.[0]?.url || '',
+                        image: primaryImage,
                         sku: p.sku || '',
                         barcode: p.metadata?.barcode || p.sku || '',
                         variants: variants.length > 0 ? variants : undefined,
@@ -1059,13 +1067,22 @@ export default function POSPage() {
                                     >
                                         <div className="aspect-square relative bg-gray-50 shrink-0">
                                             {product.image ? (
-                                                <img src={product.image} alt={product.name}
-                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center text-gray-300">
-                                                    <i className="ri-image-line text-3xl" />
-                                                </div>
-                                            )}
+                                                <img
+                                                    src={product.image}
+                                                    alt={product.name}
+                                                    loading="lazy"
+                                                    decoding="async"
+                                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                    onError={(e) => {
+                                                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                                        const fallback = e.currentTarget.nextElementSibling as HTMLElement | null;
+                                                        if (fallback) fallback.classList.remove('hidden');
+                                                    }}
+                                                />
+                                            ) : null}
+                                            <div className={`w-full h-full flex items-center justify-center text-gray-300 ${product.image ? 'hidden' : ''}`}>
+                                                <i className="ri-image-line text-3xl" />
+                                            </div>
                                             <div className="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-full backdrop-blur-sm font-medium">
                                                 {outOfStock ? 'OUT' : `${product.quantity}`}
                                             </div>

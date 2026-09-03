@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'; // used for categories fetch only
 import { useRouter } from 'next/navigation';
 import { buildProductSeo } from '@/lib/product-seo';
 import { asNumber, money } from '@/lib/format-money';
+import { prepareImageForUpload } from '@/lib/client-image-compress';
 
 interface ProductFormProps {
     initialData?: any;
@@ -407,28 +408,68 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
             setUploadProgress(files.map(f => ({ name: f.name, done: false })));
 
             const newImages: any[] = [];
+            // Phone camera JPEGs are often 8–15MB — resize on device first, then allow larger originals.
+            const MAX_IMAGE_RAW = 40 * 1024 * 1024;
+            const MAX_IMAGE_AFTER = 8 * 1024 * 1024;
+            const MAX_VIDEO = 100 * 1024 * 1024;
+            const UPLOAD_TIMEOUT_MS = 90_000;
 
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
                 const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
                 const isVideo = ['mp4', 'mov', 'webm'].includes(fileExt);
 
-                const maxSize = isVideo ? 100 * 1024 * 1024 : 5 * 1024 * 1024;
-                if (file.size > maxSize) {
-                    alert(`"${file.name}" is too large. Max: ${isVideo ? '100MB for videos' : '5MB for images'}`);
+                if (isVideo) {
+                    if (file.size > MAX_VIDEO) {
+                        alert(`"${file.name}" is too large. Max: 100MB for videos`);
+                        setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true } : p));
+                        continue;
+                    }
+                } else if (file.size > MAX_IMAGE_RAW) {
+                    alert(`"${file.name}" is too large (max 40MB). Try another photo.`);
                     setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true } : p));
                     continue;
                 }
 
+                let uploadFile = file;
+                if (!isVideo) {
+                    try {
+                        uploadFile = await prepareImageForUpload(file);
+                    } catch {
+                        uploadFile = file;
+                    }
+                    if (uploadFile.size > MAX_IMAGE_AFTER) {
+                        alert(`"${file.name}" is still too large after compression. Try a lower-resolution photo.`);
+                        setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true } : p));
+                        continue;
+                    }
+                }
+
                 const formData = new FormData();
-                formData.append('file', file);
+                formData.append('file', uploadFile);
                 formData.append('bucket', 'product-images');
 
-                const res = await fetch('/api/admin/upload', {
-                    method: 'POST',
-                    body: formData,
-                    credentials: 'include',
-                });
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+                let res: Response;
+                try {
+                    res = await fetch('/api/admin/upload', {
+                        method: 'POST',
+                        body: formData,
+                        credentials: 'include',
+                        signal: controller.signal,
+                    });
+                } catch (err: any) {
+                    clearTimeout(timer);
+                    const timedOut = err?.name === 'AbortError';
+                    alert(timedOut
+                        ? `Upload timed out for "${file.name}". Check your connection and try again.`
+                        : `Upload failed for "${file.name}": ${err?.message || 'network error'}`);
+                    setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true } : p));
+                    continue;
+                } finally {
+                    clearTimeout(timer);
+                }
 
                 const data = await res.json().catch(() => ({}));
                 setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true } : p));
@@ -1330,12 +1371,30 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                                                                 onChange={async (e) => {
                                                                                     const file = e.target.files?.[0];
                                                                                     if (!file) return;
-                                                                                    const fd = new FormData();
-                                                                                    fd.append('file', file);
-                                                                                    fd.append('bucket', 'product-images');
-                                                                                    const res = await fetch('/api/admin/upload', { method: 'POST', body: fd, credentials: 'include' });
-                                                                                    const data = await res.json().catch(() => ({}));
-                                                                                    if (data?.url) setVariantImage(combo.key, data.url);
+                                                                                    try {
+                                                                                        const prepared = await prepareImageForUpload(file);
+                                                                                        if (prepared.size > 8 * 1024 * 1024) {
+                                                                                            alert('Image too large after compression. Try another photo.');
+                                                                                            e.target.value = '';
+                                                                                            return;
+                                                                                        }
+                                                                                        const fd = new FormData();
+                                                                                        fd.append('file', prepared);
+                                                                                        fd.append('bucket', 'product-images');
+                                                                                        const controller = new AbortController();
+                                                                                        const timer = setTimeout(() => controller.abort(), 90_000);
+                                                                                        const res = await fetch('/api/admin/upload', {
+                                                                                            method: 'POST',
+                                                                                            body: fd,
+                                                                                            credentials: 'include',
+                                                                                            signal: controller.signal,
+                                                                                        }).finally(() => clearTimeout(timer));
+                                                                                        const data = await res.json().catch(() => ({}));
+                                                                                        if (data?.url) setVariantImage(combo.key, data.url);
+                                                                                        else alert(data?.error || 'Upload failed');
+                                                                                    } catch (err: any) {
+                                                                                        alert(err?.name === 'AbortError' ? 'Upload timed out' : (err?.message || 'Upload failed'));
+                                                                                    }
                                                                                     e.target.value = '';
                                                                                 }}
                                                                             />
@@ -1558,7 +1617,7 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                 <p className="text-sm text-blue-800">
                                     Tap <strong>Choose from Gallery</strong> → your Files app opens → tap <strong>Select</strong> (top-right) → tap all the photos you want → tap <strong>Open</strong>. All selected photos upload at once.
                                 </p>
-                                <p className="text-xs text-blue-700 mt-1">Images: JPG, PNG, WebP, HEIC (max 5MB each) · Videos: MP4, MOV, WebM (max 100MB each)</p>
+                                <p className="text-xs text-blue-700 mt-1">Images: JPG, PNG, WebP, HEIC (phone photos auto-resized) · Videos: MP4, MOV, WebM (max 100MB each)</p>
                             </div>
                         </div>
                     )}

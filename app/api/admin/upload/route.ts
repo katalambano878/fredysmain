@@ -3,6 +3,12 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { compressImageBuffer } from '@/lib/image-compress';
 import { isPlainPostgres } from '@/lib/db/mode';
 
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
+/** Reject absurd payloads early (Android camera originals can be large). */
+const MAX_UPLOAD_BYTES = 40 * 1024 * 1024;
+
 function getAccessToken(request: Request): string | null {
   const authHeader = request.headers.get('authorization');
   if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7).trim();
@@ -70,9 +76,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing file' }, { status: 400 });
     }
 
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json(
+        { error: `File too large (max ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))}MB). Try a smaller photo.` },
+        { status: 413 }
+      );
+    }
+
     const originalExt = (file.name.split('.').pop() || 'jpg').toLowerCase();
     const inputBuf = Buffer.from(await file.arrayBuffer());
-    const inputType = file.type || `image/${originalExt === 'jpg' ? 'jpeg' : originalExt}`;
+    let inputType = file.type || `image/${originalExt === 'jpg' ? 'jpeg' : originalExt}`;
+    // Android/iOS often send HEIC with empty or generic type
+    if (
+      (!file.type || file.type === 'application/octet-stream') &&
+      (originalExt === 'heic' || originalExt === 'heif')
+    ) {
+      inputType = 'image/heic';
+    }
 
     const compressed = await compressImageBuffer(inputBuf, inputType);
     const ext = compressed.ext || (compressed.contentType.includes('webp') ? 'webp' : originalExt);
