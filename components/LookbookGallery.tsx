@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState, FormEvent } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
+import { storageImageSrcSet, storageImageUrl } from '@/lib/storage-url';
 
 export type LookbookItem = {
   id: string;
@@ -12,10 +12,68 @@ export type LookbookItem = {
   sort_order: number;
 };
 
+const GRID_WIDTHS = [320, 480, 640];
+const LIGHTBOX_WIDTH = 960;
+const LIGHTBOX_QUALITY = 75;
+const GRID_SIZES = '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw';
+
+/**
+ * Loads a resized variant first; if that fails, the original file; if that
+ * also fails, a neutral placeholder instead of a broken-image icon.
+ */
+function GalleryImage({
+  src,
+  alt,
+  className,
+  variant,
+  eager = false,
+}: {
+  src: string;
+  alt: string;
+  className: string;
+  variant: 'grid' | 'full';
+  eager?: boolean;
+}) {
+  const [stage, setStage] = useState<'resized' | 'original' | 'failed'>('resized');
+
+  useEffect(() => {
+    setStage('resized');
+  }, [src]);
+
+  if (stage === 'failed') {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-100 text-gray-400">
+        <i className="ri-image-line text-3xl" />
+        <span className="mt-1 text-xs">Photo unavailable</span>
+      </div>
+    );
+  }
+
+  const useResized = stage === 'resized';
+  const resizedSrc = variant === 'grid' ? storageImageUrl(src, 480) : storageImageUrl(src, LIGHTBOX_WIDTH, LIGHTBOX_QUALITY);
+  const srcSet = useResized && variant === 'grid' ? storageImageSrcSet(src, GRID_WIDTHS) : undefined;
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={useResized ? resizedSrc : src}
+      srcSet={srcSet}
+      sizes={srcSet ? GRID_SIZES : undefined}
+      alt={alt}
+      loading={eager ? 'eager' : 'lazy'}
+      decoding="async"
+      className={className}
+      onError={() => setStage(useResized && resizedSrc !== src ? 'original' : 'failed')}
+    />
+  );
+}
+
 /** Full-page dress gallery (same data as admin “Homepage gallery”). */
 export default function LookbookGallery() {
   const [items, setItems] = useState<LookbookItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [lightbox, setLightbox] = useState<number | null>(null);
 
   const [showPreorderForm, setShowPreorderForm] = useState(false);
@@ -62,15 +120,24 @@ export default function LookbookGallery() {
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setLoadError(false);
     (async () => {
       try {
         const res = await fetch('/api/storefront/homepage-gallery', { cache: 'no-store' });
-        const json = await res.json();
-        if (!cancelled && res.ok && Array.isArray(json.items)) {
+        const json = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (res.ok && Array.isArray(json.items)) {
           setItems(json.items);
+        } else {
+          console.error('[Gallery] Failed to load items:', res.status, json.error);
+          setLoadError(true);
         }
-      } catch {
-        /* ignore */
+      } catch (err) {
+        if (!cancelled) {
+          console.error('[Gallery] Network error loading items:', err);
+          setLoadError(true);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -78,20 +145,46 @@ export default function LookbookGallery() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   const close = useCallback(() => { setLightbox(null); resetPreorderState(); }, [resetPreorderState]);
 
+  // A preorder form/success message belongs to one design; clear it when moving to another.
+  useEffect(() => {
+    resetPreorderState();
+  }, [lightbox, resetPreorderState]);
+
+  // Warm the browser cache for the neighbouring photos so arrow navigation is instant.
   useEffect(() => {
     if (lightbox === null) return;
+    [lightbox - 1, lightbox + 1].forEach((i) => {
+      const item = items[i];
+      if (!item) return;
+      const img = new window.Image();
+      img.decoding = 'async';
+      img.src = storageImageUrl(item.image_url, LIGHTBOX_WIDTH, LIGHTBOX_QUALITY);
+    });
+  }, [lightbox, items]);
+
+  useEffect(() => {
+    if (lightbox === null) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
       if (e.key === 'Escape') close();
+      if (typing) return;
       if (e.key === 'ArrowLeft') setLightbox((i) => (i !== null && i > 0 ? i - 1 : i));
       if (e.key === 'ArrowRight')
         setLightbox((i) => (i !== null && i < items.length - 1 ? i + 1 : i));
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+    };
   }, [lightbox, items.length, close]);
 
   if (loading) {
@@ -100,6 +193,26 @@ export default function LookbookGallery() {
         {[...Array(8)].map((_, i) => (
           <div key={i} className="aspect-[3/4] rounded-2xl bg-gray-100 animate-pulse" />
         ))}
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="text-center py-16 px-4 rounded-2xl border border-dashed border-red-200 bg-red-50/40">
+        <i className="ri-error-warning-line text-4xl text-red-400 mb-4 block" />
+        <p className="text-lg font-semibold text-gray-900">We couldn’t load the gallery</p>
+        <p className="mt-2 text-sm text-gray-600 max-w-md mx-auto">
+          Please check your connection and try again.
+        </p>
+        <button
+          type="button"
+          onClick={() => setReloadKey((k) => k + 1)}
+          className="inline-flex mt-6 items-center rounded-full bg-brand-orange px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-orangeDark transition-colors"
+        >
+          <i className="ri-refresh-line mr-2" />
+          Try again
+        </button>
       </div>
     );
   }
@@ -133,12 +246,12 @@ export default function LookbookGallery() {
             onClick={() => setLightbox(index)}
             className="group relative aspect-[3/4] overflow-hidden rounded-2xl border border-brand-green/15 bg-white shadow-sm text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange"
           >
-            <Image
+            <GalleryImage
               src={item.image_url}
               alt={item.title || 'Lookbook photo'}
-              fill
-              className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+              variant="grid"
+              eager={index < 4}
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent opacity-90" />
             <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
@@ -200,13 +313,13 @@ export default function LookbookGallery() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="relative aspect-[3/4] max-h-[60vh] w-full mx-auto">
-              <Image
+              <GalleryImage
+                key={items[lightbox].id}
                 src={items[lightbox].image_url}
                 alt={items[lightbox].title || 'Lookbook'}
-                fill
-                className="object-contain"
-                sizes="100vw"
-                priority
+                variant="full"
+                eager
+                className="absolute inset-0 h-full w-full object-contain"
               />
             </div>
 

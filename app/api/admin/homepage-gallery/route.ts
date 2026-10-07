@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireAdminSession } from '@/lib/admin-route-auth';
+import { normalizeStorageUrl } from '@/lib/storage-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,12 @@ export async function GET(request: Request) {
     .order('created_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ items: data ?? [] });
+  const origin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
+  const items = (data ?? []).map((item: any) => ({
+    ...item,
+    image_url: normalizeStorageUrl(item.image_url, origin),
+  }));
+  return NextResponse.json({ items });
 }
 
 export async function POST(request: Request) {

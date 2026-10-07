@@ -57,6 +57,24 @@ function safeJoin(bucket: string, objectPath: string): string {
   return full;
 }
 
+/** Absolute disk path of a stored object (throws on path traversal). */
+export function objectFilePath(bucket: string, objectPath: string): string {
+  return safeJoin(bucket, objectPath);
+}
+
+/** Disk path for a resized variant, kept outside every bucket directory. */
+export function renderCacheFilePath(
+  bucket: string,
+  objectPath: string,
+  variant: string
+): string {
+  const clean = objectPath.replace(/^\/+/, "");
+  const base = path.normalize(path.join(STORAGE_ROOT, ".render-cache", bucket));
+  const full = path.normalize(path.join(base, `${clean}.${variant}`));
+  if (!full.startsWith(base)) throw new Error("Path traversal blocked");
+  return full;
+}
+
 export async function readObject(
   bucket: string,
   objectPath: string

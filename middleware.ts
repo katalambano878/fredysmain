@@ -160,6 +160,10 @@ export async function middleware(request: NextRequest) {
     response.headers.set('Cache-Control', 'public, max-age=86400, immutable');
   }
 
+  if (pathname.startsWith('/storage/v1/render/image/public/')) {
+    response.headers.set('Cache-Control', 'public, max-age=2592000, immutable');
+  }
+
   return response;
 }
 

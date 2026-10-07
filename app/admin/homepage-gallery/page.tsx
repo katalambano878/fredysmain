@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { storageImageUrl } from '@/lib/storage-url';
 
 type GalleryRow = {
   id: string;
@@ -243,7 +244,19 @@ export default function HomepageGalleryAdminPage() {
               >
                 <div className="relative w-full sm:w-32 h-40 sm:h-28 flex-shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-white">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={row.image_url} alt="" className="w-full h-full object-cover" />
+                  <img
+                    src={storageImageUrl(row.image_url, 320)}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      const img = e.currentTarget;
+                      if (img.dataset.fallback) return;
+                      img.dataset.fallback = '1';
+                      img.src = row.image_url;
+                    }}
+                  />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-gray-900">{row.title || 'Untitled'}</p>
