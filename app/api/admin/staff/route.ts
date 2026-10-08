@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { requirePermission } from '@/lib/admin-route-auth';
 
 /** Same sources as /api/admin/me: Bearer header, sb-access-token cookie, or sb-*-auth-token. */
 function getAccessToken(request: Request): string | null {
@@ -49,10 +50,8 @@ async function getAuthenticatedAdmin(request: Request) {
 
 // GET — List all staff (admin + staff role profiles)
 export async function GET(request: Request) {
-  const admin = await getAuthenticatedAdmin(request);
-  if (!admin) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const actor = await requirePermission(request, 'delete_staff');
+  if (actor instanceof NextResponse) return actor;
 
   const { data: staff, error } = await supabaseAdmin
     .from('profiles')
@@ -207,10 +206,8 @@ export async function PATCH(request: Request) {
 
 // DELETE — Remove staff access (demote to customer)
 export async function DELETE(request: Request) {
-  const admin = await getAuthenticatedAdmin(request);
-  if (!admin) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const actor = await requirePermission(request, 'delete_staff');
+  if (actor instanceof NextResponse) return actor;
 
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get('userId');
@@ -219,7 +216,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'User ID is required.' }, { status: 400 });
   }
 
-  if (userId === admin.id) {
+  if (userId === actor.userId) {
     return NextResponse.json({ error: 'You cannot remove yourself.' }, { status: 403 });
   }
 
@@ -232,6 +229,11 @@ export async function DELETE(request: Request) {
 
   if (!profile || !['admin', 'staff'].includes(profile.role)) {
     return NextResponse.json({ error: 'User is not a staff member.' }, { status: 404 });
+  }
+
+  // Delete-only access covers staff accounts, never administrators.
+  if (profile.role === 'admin' && actor.role !== 'admin') {
+    return NextResponse.json({ error: 'Only an administrator can remove an administrator.' }, { status: 403 });
   }
 
   const { error } = await supabaseAdmin

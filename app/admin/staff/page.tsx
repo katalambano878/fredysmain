@@ -23,6 +23,7 @@ export default function StaffPage() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [canDeleteStaff, setCanDeleteStaff] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Invite modal state
@@ -55,16 +56,33 @@ export default function StaffPage() {
 
   useEffect(() => {
     async function init() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setCurrentUserId(session.user.id);
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', session.user.id)
-          .single();
-        if (profile) setUserRole(profile.role);
+      let role: string | null = null;
+      let canDelete = false;
+      try {
+        const res = await fetch('/api/admin/me', { credentials: 'include' });
+        if (res.ok) {
+          const json = await res.json();
+          role = json?.profile?.role != null ? String(json.profile.role) : null;
+          setCurrentUserId(json?.user?.id ?? null);
+          canDelete = role === 'admin' || json?.permissions?.delete_staff === true;
+        }
+      } catch (err) {
+        console.error('Error loading current user:', err);
       }
+      if (!role) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          setCurrentUserId(session.user.id);
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', session.user.id)
+            .single();
+          if (profile) role = profile.role;
+        }
+      }
+      setUserRole(role);
+      setCanDeleteStaff(canDelete);
       fetchStaff();
     }
     init();
@@ -174,7 +192,7 @@ export default function StaffPage() {
     });
   }
 
-  if (userRole !== 'admin') {
+  if (userRole !== 'admin' && !canDeleteStaff) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <div className="text-center">
@@ -185,6 +203,8 @@ export default function StaffPage() {
       </div>
     );
   }
+
+  const canManage = userRole === 'admin';
 
   if (loading) {
     return (
@@ -221,17 +241,19 @@ export default function StaffPage() {
             {' '}{admins.length} admin{admins.length !== 1 ? 's' : ''}, {staffMembers.length} staff
           </p>
         </div>
-        <button
-          onClick={() => {
-            setShowInviteModal(true);
-            setInviteError('');
-            setInviteSuccess('');
-          }}
-          className="flex items-center gap-2 px-5 py-2.5 bg-gray-700 text-white font-semibold rounded-xl hover:bg-gray-900 transition-colors shadow-sm cursor-pointer"
-        >
-          <i className="ri-user-add-line text-lg" />
-          Add Staff
-        </button>
+        {canManage && (
+          <button
+            onClick={() => {
+              setShowInviteModal(true);
+              setInviteError('');
+              setInviteSuccess('');
+            }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gray-700 text-white font-semibold rounded-xl hover:bg-gray-900 transition-colors shadow-sm cursor-pointer"
+          >
+            <i className="ri-user-add-line text-lg" />
+            Add Staff
+          </button>
+        )}
       </div>
 
       {/* Staff List */}
@@ -307,14 +329,16 @@ export default function StaffPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => openEdit(member)}
-                      className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer"
-                      title="Edit"
-                    >
-                      <i className="ri-pencil-line text-lg" />
-                    </button>
-                    {!isCurrentUser && (
+                    {canManage && (
+                      <button
+                        onClick={() => openEdit(member)}
+                        className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer"
+                        title="Edit"
+                      >
+                        <i className="ri-pencil-line text-lg" />
+                      </button>
+                    )}
+                    {!isCurrentUser && (canManage || member.role !== 'admin') && (
                       <button
                         onClick={() => setRemovingId(member.id)}
                         className="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"

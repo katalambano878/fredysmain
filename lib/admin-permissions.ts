@@ -1,3 +1,20 @@
+/**
+ * Extra permissions granted to one person, on top of their role.
+ * Erica (logs in as "Rica") may delete staff only: production team members
+ * on the COP page and staff login accounts. She cannot add or edit either.
+ */
+const EXTRA_PERMISSIONS_BY_USER_ID: Record<string, Record<string, boolean>> = {
+  '88121cfd-b921-4198-821f-079bcd20a822': { delete_staff: true },
+};
+
+export function permissionsForUser(
+  userId: string | null | undefined,
+  rolePermissions: Record<string, boolean>
+): Record<string, boolean> {
+  const extra = userId ? EXTRA_PERMISSIONS_BY_USER_ID[userId] : undefined;
+  return extra ? { ...rolePermissions, ...extra } : rolePermissions;
+}
+
 /** Map admin pathname → permission key used in roles.permissions */
 export function permissionForPath(pathname: string): string | null {
   if (pathname === '/admin' || pathname === '/admin/') return 'dashboard';
@@ -18,6 +35,7 @@ export function permissionForPath(pathname: string): string | null {
   if (pathname.startsWith('/admin/inventory')) return 'inventory';
   if (pathname.startsWith('/admin/analytics')) return 'analytics';
   if (pathname.startsWith('/admin/finance')) return 'finance';
+  if (pathname.startsWith('/admin/production-team')) return 'delete_staff';
   if (pathname.startsWith('/admin/coupons')) return 'coupons';
   if (pathname.startsWith('/admin/support')) return 'support';
   if (pathname.startsWith('/admin/customer-insights')) return 'customer_insights';
@@ -57,6 +75,7 @@ export function firstAllowedAdminPath(permissions: Record<string, boolean>): str
     ['orders', '/admin/orders'],
     ['pos', '/admin/pos'],
     ['products', '/admin/products'],
+    ['delete_staff', '/admin/production-team'],
     ['dashboard', '/admin'],
   ] as const;
   for (const [key, path] of order) {

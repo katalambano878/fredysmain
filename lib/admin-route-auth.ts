@@ -52,3 +52,44 @@ export async function getAdminUserIdFromRequest(request: Request): Promise<strin
   const { data: { user } } = await supabaseAdmin.auth.getUser(token);
   return user?.id ?? null;
 }
+
+export type AdminActor = { userId: string; role: string; permissions: Record<string, boolean> };
+
+/** Signed-in admin or staff, with their role permissions plus any per-person extras. */
+export async function getAdminActor(request: Request): Promise<AdminActor | null> {
+  const token = getAdminAccessToken(request);
+  if (!token) return null;
+  const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+  if (userError || !user) return null;
+
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+  const role = profile?.role != null ? String(profile.role) : '';
+  if (role !== 'admin' && role !== 'staff') return null;
+
+  const { data: roleConfig } = await supabaseAdmin
+    .from('roles')
+    .select('permissions')
+    .eq('id', role)
+    .single();
+  const rolePermissions =
+    roleConfig?.permissions && typeof roleConfig.permissions === 'object' ? roleConfig.permissions : {};
+
+  const { permissionsForUser } = await import('@/lib/admin-permissions');
+  return { userId: user.id, role, permissions: permissionsForUser(user.id, rolePermissions) };
+}
+
+export async function requirePermission(
+  request: Request,
+  permission: string
+): Promise<NextResponse | AdminActor> {
+  const actor = await getAdminActor(request);
+  if (!actor) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (actor.role !== 'admin' && actor.permissions[permission] !== true) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  return actor;
+}

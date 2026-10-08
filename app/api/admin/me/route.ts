@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { getAdminAccessToken } from '@/lib/admin-route-auth';
+import { permissionsForUser } from '@/lib/admin-permissions';
 import { isPlainPostgres } from '@/lib/db/mode';
 
 /**
@@ -59,7 +60,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       user: { id: user.id, email: user.email },
       profile: { role },
-      permissions: roleConfig?.permissions ?? {},
+      permissions: permissionsForUser(user.id, roleConfig?.permissions ?? {}),
     });
   } catch (e: any) {
     console.error('[admin/me]', e?.message || e);

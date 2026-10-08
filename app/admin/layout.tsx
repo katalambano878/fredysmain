@@ -429,6 +429,12 @@ export default function AdminLayout({
       permissionKey: 'staff'
     },
     {
+      title: 'Production Team',
+      icon: 'ri-scissors-cut-line',
+      path: '/admin/production-team',
+      permissionKey: 'delete_staff'
+    },
+    {
       title: 'Roles',
       icon: 'ri-shield-user-line',
       path: '/admin/roles',

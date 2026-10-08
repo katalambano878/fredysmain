@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireAdminSession } from '@/lib/admin-route-auth';
+import { requireAdminSession, requirePermission } from '@/lib/admin-route-auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  const err = await requireAdminSession(request);
-  if (err) return err;
+  const actor = await requirePermission(request, 'delete_staff');
+  if (actor instanceof NextResponse) return actor;
   const { searchParams } = new URL(request.url);
   const activeOnly = searchParams.get('active') !== '0';
   let q = supabaseAdmin.from('production_staff').select('*').order('full_name');

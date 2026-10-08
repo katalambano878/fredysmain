@@ -18,6 +18,25 @@ export default function ProductionStaffPage() {
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [canManage, setCanManage] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/me', { credentials: 'include' });
+        if (!res.ok || cancelled) return;
+        const json = await res.json();
+        if (!cancelled) setCanManage(json?.profile?.role === 'admin');
+      } catch {
+        /* leave canManage false — the page stays delete-only */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -64,6 +83,24 @@ export default function ProductionStaffPage() {
     }
   }
 
+  async function remove(s: Staff) {
+    if (!window.confirm(`Delete ${s.full_name}? This cannot be undone.`)) return;
+    setDeletingId(s.id);
+    try {
+      const res = await fetch(`/api/admin/production-staff/${s.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Delete failed');
+      await load();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   async function toggleActive(s: Staff) {
     const res = await fetch(`/api/admin/production-staff/${s.id}`, {
       method: 'PATCH',
@@ -78,15 +115,18 @@ export default function ProductionStaffPage() {
   return (
     <div className="space-y-8 max-w-3xl">
       <div>
-        <Link href="/admin/finance" className="text-sm font-semibold text-brand-greenDark hover:underline">
-          ← Finance
-        </Link>
+        {canManage && (
+          <Link href="/admin/finance" className="text-sm font-semibold text-brand-greenDark hover:underline">
+            ← Finance
+          </Link>
+        )}
         <h1 className="text-2xl font-bold text-gray-900 mt-2">Production team</h1>
         <p className="text-gray-600 mt-1">
           Tailors and makers who appear on product COP and production logs. This is separate from admin login accounts.
         </p>
       </div>
 
+      {canManage && (
       <form onSubmit={add} className="rounded-xl border border-gray-200 bg-white p-5 space-y-4 shadow-sm">
         <h2 className="font-bold text-gray-900">Add team member</h2>
         <div>
@@ -123,6 +163,7 @@ export default function ProductionStaffPage() {
           {saving ? 'Saving…' : 'Add'}
         </button>
       </form>
+      )}
 
       <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
         <div className="px-5 py-3 border-b border-gray-100 font-bold text-gray-900">All members</div>
@@ -139,17 +180,29 @@ export default function ProductionStaffPage() {
                     {s.notes ? ` · ${s.notes}` : ''}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => toggleActive(s)}
-                  className={`text-sm font-semibold px-3 py-1.5 rounded-lg border ${
-                    s.is_active
-                      ? 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                      : 'border-amber-300 text-amber-800 bg-amber-50'
-                  }`}
-                >
-                  {s.is_active ? 'Deactivate' : 'Activate'}
-                </button>
+                <div className="flex items-center gap-2">
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => toggleActive(s)}
+                      className={`text-sm font-semibold px-3 py-1.5 rounded-lg border ${
+                        s.is_active
+                          ? 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                          : 'border-amber-300 text-amber-800 bg-amber-50'
+                      }`}
+                    >
+                      {s.is_active ? 'Deactivate' : 'Activate'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => remove(s)}
+                    disabled={deletingId === s.id}
+                    className="text-sm font-semibold px-3 py-1.5 rounded-lg border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {deletingId === s.id ? 'Deleting…' : 'Delete'}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

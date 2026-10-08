@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireAdminSession } from '@/lib/admin-route-auth';
+import { requireAdminSession, requirePermission } from '@/lib/admin-route-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,8 +33,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const err = await requireAdminSession(request);
-  if (err) return err;
+  const actor = await requirePermission(request, 'delete_staff');
+  if (actor instanceof NextResponse) return actor;
   const { id } = await params;
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
   const { error } = await supabaseAdmin.from('production_staff').delete().eq('id', id);
