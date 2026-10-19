@@ -294,6 +294,11 @@ export default function AdminLayout({
       permissionKey: 'orders'
     },
     {
+      title: 'Buy SMS',
+      icon: 'ri-message-2-line',
+      path: '/admin/sms-credit'
+    },
+    {
       title: 'Sales',
       icon: 'ri-store-3-line',
       path: '/admin/sales',
@@ -415,11 +420,6 @@ export default function AdminLayout({
       icon: 'ri-truck-line',
       path: '/admin/delivery',
       permissionKey: 'delivery'
-    },
-    {
-      title: 'Buy SMS',
-      icon: 'ri-message-2-line',
-      path: '/admin/sms-credit'
     },
     {
       title: 'Modules',
