@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { denyUnlessPermission, requireAnyPermission } from '@/lib/admin-route-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-
-async function getAuthUser(req: NextRequest) {
-    const token = req.cookies.get('sb-access-token')?.value;
-    if (!token) return null;
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !user) return null;
-    const { data: profile } = await supabaseAdmin.from('profiles').select('role, full_name').eq('id', user.id).single();
-    if (!profile || (profile.role !== 'admin' && profile.role !== 'staff')) return null;
-    return { ...user, role: profile.role, fullName: profile.full_name };
-}
 
 /** Deliveries that still hold the order: anything that has not failed or been returned. */
 const ACTIVE_OR_DONE = ['assigned', 'picked_up', 'in_transit', 'delivered'];
@@ -26,8 +17,8 @@ const NEXT_STATUSES: Record<string, string[]> = {
 
 // GET — List assignments with filters
 export async function GET(req: NextRequest) {
-    const user = await getAuthUser(req);
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const denied = await denyUnlessPermission(req, ['delivery']);
+    if (denied) return denied;
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
@@ -61,8 +52,8 @@ export async function GET(req: NextRequest) {
 
 // POST — Create new assignment (assign order to rider)
 export async function POST(req: NextRequest) {
-    const user = await getAuthUser(req);
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const actor = await requireAnyPermission(req, ['delivery']);
+    if (actor instanceof NextResponse) return actor;
 
     const body = await req.json();
     const { order_id, rider_id, priority, delivery_notes, estimated_delivery, delivery_fee } = body;
@@ -109,7 +100,7 @@ export async function POST(req: NextRequest) {
             delivery_notes: delivery_notes || null,
             estimated_delivery: estimated_delivery || null,
             delivery_fee: delivery_fee || 0,
-            assigned_by: user.id,
+            assigned_by: actor.userId,
             status: 'assigned',
         })
         .select()
@@ -127,7 +118,7 @@ export async function POST(req: NextRequest) {
     await supabaseAdmin.from('delivery_status_history').insert({
         assignment_id: assignment.id,
         new_status: 'assigned',
-        changed_by: user.id,
+        changed_by: actor.userId,
         notes: `Assigned to ${rider.full_name}`,
     });
 
@@ -136,8 +127,8 @@ export async function POST(req: NextRequest) {
 
 // PATCH — Update assignment status
 export async function PATCH(req: NextRequest) {
-    const user = await getAuthUser(req);
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const actor = await requireAnyPermission(req, ['delivery']);
+    if (actor instanceof NextResponse) return actor;
 
     const body = await req.json();
     const { id, status, delivery_notes, failure_reason, proof_of_delivery } = body;
@@ -220,7 +211,7 @@ export async function PATCH(req: NextRequest) {
         assignment_id: id,
         old_status: current.status,
         new_status: status,
-        changed_by: user.id,
+        changed_by: actor.userId,
         notes: delivery_notes || failure_reason || `Status changed to ${status}`,
     });
 
@@ -229,8 +220,8 @@ export async function PATCH(req: NextRequest) {
 
 // DELETE — Remove assignment
 export async function DELETE(req: NextRequest) {
-    const user = await getAuthUser(req);
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const denied = await denyUnlessPermission(req, ['delivery']);
+    if (denied) return denied;
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');

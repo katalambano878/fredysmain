@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdminSession } from '@/lib/admin-route-auth';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { isPlainPostgres } from '@/lib/db/mode';
 import { query } from '@/lib/db/pool';
 import { supabaseAdmin } from '@/lib/supabase-admin';
@@ -19,7 +19,7 @@ function rangeStart(timeRange: string): Date {
  * GET /api/admin/analytics?range=30days
  */
 export async function GET(request: Request) {
-  const err = await requireAdminSession(request);
+  const err = await denyUnlessPermission(request, ['analytics']);
   if (err) return err;
 
   const { searchParams } = new URL(request.url);

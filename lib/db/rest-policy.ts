@@ -13,7 +13,7 @@ import { query } from "./pool";
 export type Caller =
   | { kind: "anon" }
   | { kind: "customer"; userId: string }
-  | { kind: "staff"; userId: string };
+  | { kind: "staff"; userId: string; admin: boolean };
 
 const ANON: Caller = { kind: "anon" };
 
@@ -30,7 +30,9 @@ export async function resolveCaller(req: Request): Promise<Caller> {
       verified.userId,
     ]);
     const role = String(rows[0]?.role || "");
-    if (role === "admin" || role === "staff") return { kind: "staff", userId: verified.userId };
+    if (role === "admin" || role === "staff") {
+      return { kind: "staff", userId: verified.userId, admin: role === "admin" };
+    }
     return { kind: "customer", userId: verified.userId };
   } catch {
     return ANON;
@@ -121,6 +123,7 @@ function pick(source: unknown, keys: string[], maxLength: number): Record<string
 export function decideInsert(caller: Caller, table: string, body: unknown): InsertDecision {
   const list = Array.isArray(body) ? body : [body];
   if (caller.kind === "staff") {
+    if (!mayWrite(caller, table, body)) return DENIED as InsertDecision;
     return { allowed: true, rows: list as Record<string, unknown>[], returnRows: true };
   }
   if (list.length !== 1) return { allowed: false, status: 400, message: "One row at a time" };
@@ -149,9 +152,22 @@ export function decideInsert(caller: Caller, table: string, body: unknown): Inse
   return caller.kind === "anon" ? (SIGN_IN as InsertDecision) : (DENIED as InsertDecision);
 }
 
-/** Changing and deleting rows through this API is for staff only. */
-export function mayWrite(caller: Caller): boolean {
-  return caller.kind === "staff";
+/**
+ * Changing and deleting rows through this API is for staff only, and who holds which
+ * permission is for administrators only: a staff member may not edit roles, delete a
+ * profile, or set anyone's role (their own included).
+ */
+export function mayWrite(caller: Caller, table: string, body?: unknown, isDelete = false): boolean {
+  if (caller.kind !== "staff") return false;
+  if (caller.admin) return true;
+  const name = table.toLowerCase();
+  if (name === "roles") return false;
+  if (name === "profiles") {
+    if (isDelete) return false;
+    const rows = Array.isArray(body) ? body : [body];
+    if (rows.some((row) => row && typeof row === "object" && "role" in (row as Record<string, unknown>))) return false;
+  }
+  return true;
 }
 
 export function mayCallRpc(caller: Caller, fn: string): boolean {

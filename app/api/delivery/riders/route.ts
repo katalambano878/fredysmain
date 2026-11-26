@@ -1,20 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-
-async function getAuthUser(req: NextRequest) {
-    const token = req.cookies.get('sb-access-token')?.value;
-    if (!token) return null;
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !user) return null;
-    const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single();
-    if (!profile || (profile.role !== 'admin' && profile.role !== 'staff')) return null;
-    return { ...user, role: profile.role };
-}
 
 // GET — List riders
 export async function GET(req: NextRequest) {
-    const user = await getAuthUser(req);
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const denied = await denyUnlessPermission(req, ['delivery']);
+    if (denied) return denied;
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
@@ -34,8 +25,8 @@ export async function GET(req: NextRequest) {
 
 // POST — Add new rider
 export async function POST(req: NextRequest) {
-    const user = await getAuthUser(req);
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const denied = await denyUnlessPermission(req, ['delivery']);
+    if (denied) return denied;
 
     const body = await req.json();
     const { full_name, phone, email, vehicle_type, license_plate, zone_id } = body;
@@ -66,8 +57,8 @@ export async function POST(req: NextRequest) {
 
 // PATCH — Update rider
 export async function PATCH(req: NextRequest) {
-    const user = await getAuthUser(req);
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const denied = await denyUnlessPermission(req, ['delivery']);
+    if (denied) return denied;
 
     const body = await req.json();
     const { id, full_name, phone, email, vehicle_type, license_plate, zone_id, status } = body;
@@ -91,8 +82,8 @@ export async function PATCH(req: NextRequest) {
 
 // DELETE — Remove rider
 export async function DELETE(req: NextRequest) {
-    const user = await getAuthUser(req);
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const denied = await denyUnlessPermission(req, ['delivery']);
+    if (denied) return denied;
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');

@@ -193,6 +193,11 @@ export default function AdminLoginPage() {
               )}
             </button>
           </form>
+          <p className="mt-4 text-center text-sm">
+            <Link href="/auth/forgot-password" className="font-semibold text-gray-900 underline">
+              Forgot your password?
+            </Link>
+          </p>
 
           {/* Admin access is restricted to users with admin/staff role */}
         </div>

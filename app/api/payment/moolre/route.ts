@@ -1,3 +1,4 @@
+import { amountDue } from '@/lib/order-amounts';
 import { findOutOfStock } from '@/lib/order-stock';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId);
         const query = supabaseAdmin
             .from('orders')
-            .select('id, order_number, total, email, payment_status');
+            .select('id, order_number, total, email, payment_status, metadata');
 
         const { data: order, error: orderError } = isUUID
             ? await query.eq('id', orderId).single()
@@ -90,7 +91,8 @@ export async function POST(req: Request) {
             console.warn('[Payment] Stock check exception (non-blocking):', stockErr.message);
         }
 
-        const amount = Number(order.total);
+        // What is still owed: the total, or only the balance when a deposit was already taken.
+        const amount = amountDue(order);
         if (!amount || amount <= 0) {
             return NextResponse.json({ success: false, message: 'Invalid order amount' }, { status: 400 });
         }

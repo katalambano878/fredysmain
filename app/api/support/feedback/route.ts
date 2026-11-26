@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireAdminSession } from '@/lib/admin-route-auth';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const authErr = await requireAdminSession(req);
+  const authErr = await denyUnlessPermission(req, ['support']);
   if (authErr) return authErr;
 
   const { data, error } = await supabaseAdmin

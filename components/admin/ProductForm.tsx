@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { supabase } from '@/lib/supabase'; // used for categories fetch only
 import { useRouter } from 'next/navigation';
@@ -113,6 +113,21 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
 
     // Build variants from colors × sizes (or just sizes, or just colors)
     const buildVariantKey = (color: string, size: string) => `${color}|||${size}`;
+
+    // Stock as it was when this editor opened, for the product and for each size. It is sent with
+    // every save so the server applies only what was changed here, to the stock in the database at
+    // that moment. Without it, saving any edit put back stock that had been sold in the meantime.
+    const stockBaseline = useRef<{ productId: string | null; stock: number; sizes: Record<string, number> }>({
+        productId: initialData?.id || null,
+        stock: parseInt(String(initialData?.quantity ?? 0)) || 0,
+        sizes: (() => {
+            const loaded: Record<string, number> = {};
+            existingVariants.forEach((v: any) => {
+                loaded[buildVariantKey(v.color || '', v.size || '')] = parseInt(String(v.stock ?? 0)) || 0;
+            });
+            return loaded;
+        })(),
+    });
 
     // Store variant data (price, stock, sku, optional image_url) keyed by "color|||size"
     const [variantData, setVariantData] = useState<Record<string, { price: string; stock: string; sku: string; image_url?: string }>>(() => {
@@ -574,6 +589,8 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
             // Build variants payload with colorHex and image_url for the API
             const variantsPayload = variants.map(v => ({
                 ...v,
+                // Undefined for a size added in this session: the server then saves the typed stock.
+                original_stock: stockBaseline.current.sizes[buildVariantKey(v.color || '', v.name || '')],
                 colorHex: selectedColors.find(c => c.name === v.color)?.hex || null,
                 image_url: v.image_url || null,
             }));
@@ -635,16 +652,34 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
 
             let productId = savedId;
 
+            // Once a save has gone through, what was typed is the new starting point. Saving again
+            // (say the photos failed and the admin retries) then changes nothing a second time.
+            const rememberSavedStock = (id: string) => {
+                const sizes: Record<string, number> = {};
+                variants.forEach((v) => {
+                    sizes[buildVariantKey(v.color || '', v.name || '')] = parseInt(v.stock) || 0;
+                });
+                stockBaseline.current = { productId: id, stock: parseInt(String(stock)) || 0, sizes };
+            };
+
             if (productId) {
                 // Update via API (service role — bypasses RLS)
                 const res = await fetch(`/api/admin/products/${productId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
-                    body: JSON.stringify({ ...productData, cop: copPayload }),
+                    body: JSON.stringify({
+                        ...productData,
+                        // Only for the product this editor loaded, not one it has just created.
+                        ...(stockBaseline.current.productId === productId
+                            ? { original_quantity: stockBaseline.current.stock }
+                            : {}),
+                        cop: copPayload,
+                    }),
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.error || 'Failed to update product');
+                rememberSavedStock(productId);
             } else {
                 // Create via API (service role — bypasses RLS, handles unique slug)
                 const res = await fetch('/api/admin/products', {
@@ -658,6 +693,7 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                 productId = data.id;
                 // From here on a retry (say the photos failed to save) updates this product.
                 setSavedId(data.id || null);
+                if (data.id) rememberSavedStock(data.id);
             }
 
             // Save images via API

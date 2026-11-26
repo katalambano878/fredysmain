@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { getAdminUserIdFromRequest, requireAdminSession } from '@/lib/admin-route-auth';
+import { denyUnlessPermission, getAdminUserIdFromRequest } from '@/lib/admin-route-auth';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authErr = await requireAdminSession(req);
+  const authErr = await denyUnlessPermission(req, ['support']);
   if (authErr) return authErr;
 
   const { id } = await params;
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authErr = await requireAdminSession(req);
+  const authErr = await denyUnlessPermission(req, ['support']);
   if (authErr) return authErr;
 
   const { id } = await params;

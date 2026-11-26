@@ -1,15 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { accraDay } from '@/app/api/admin/_lib/accra-day';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-
-async function getAuthUser(req: NextRequest) {
-    const token = req.cookies.get('sb-access-token')?.value;
-    if (!token) return null;
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !user) return null;
-    const { data: profile } = await supabaseAdmin.from('profiles').select('role, full_name').eq('id', user.id).single();
-    if (!profile || (profile.role !== 'admin' && profile.role !== 'staff')) return null;
-    return { ...user, role: profile.role, fullName: profile.full_name };
-}
 
 /**
  * Orders waiting for a rider: paid for, to be delivered to the door, and not already with a rider.
@@ -38,17 +30,16 @@ async function awaitingDispatch(): Promise<any[]> {
 
 // GET /api/delivery — Stats & dashboard data
 export async function GET(req: NextRequest) {
-    const user = await getAuthUser(req);
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const denied = await denyUnlessPermission(req, ['delivery']);
+    if (denied) return denied;
 
     const { searchParams } = new URL(req.url);
     const action = searchParams.get('action') || 'stats';
 
     try {
         if (action === 'stats') {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const todayISO = today.toISOString();
+            // "Today" is the day in Accra, not the server's own midnight.
+            const todayISO = accraDay().start;
 
             const [assignmentsRes, ridersRes, deliveredToday, failedToday, waiting, zonesRes] = await Promise.all([
                 supabaseAdmin.from('delivery_assignments').select('id, status', { count: 'exact' }),

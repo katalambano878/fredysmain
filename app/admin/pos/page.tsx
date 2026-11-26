@@ -455,8 +455,9 @@ export default function POSPage() {
 
     const fetchDailySummary = async () => {
         try {
+            // The shop's day is Accra's day, which is UTC, whatever clock this till's device is set to.
             const todayStart = new Date();
-            todayStart.setHours(0, 0, 0, 0);
+            todayStart.setUTCHours(0, 0, 0, 0);
 
             // The old filter (metadata->>pos_sale) is rejected by the data layer, so the button showed "..." forever.
             const { data, error } = await supabase

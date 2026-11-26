@@ -1,5 +1,6 @@
 'use client';
 
+import { amountDue, depositPaid } from '@/lib/order-amounts';
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -88,7 +89,6 @@ export default function PaymentPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orderId: order.order_number,
-          amount: order.total,
           customerEmail: order.email
         })
       });
@@ -224,9 +224,24 @@ export default function PaymentPage() {
             )}
           </div>
 
+          {depositPaid(order || {}) > 0 && (
+            <div className="space-y-3 mb-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Order total</span>
+                <span className="text-gray-900">GH₵ {Number(order?.total || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Deposit received</span>
+                <span className="text-gray-900">-GH₵ {depositPaid(order || {}).toFixed(2)}</span>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-between items-center pt-4 border-t border-gray-200">
-            <span className="text-lg font-semibold text-gray-900">Total</span>
-            <span className="text-2xl font-bold text-gray-900">GH₵ {order?.total?.toFixed(2)}</span>
+            <span className="text-lg font-semibold text-gray-900">
+              {depositPaid(order || {}) > 0 ? 'Balance to pay' : 'Total'}
+            </span>
+            <span className="text-2xl font-bold text-gray-900">GH₵ {amountDue(order || {}).toFixed(2)}</span>
           </div>
         </div>
 
@@ -317,7 +332,7 @@ export default function PaymentPage() {
             ) : (
               <>
                 <i className="ri-secure-payment-line mr-2"></i>
-                Pay GH₵ {order?.total?.toFixed(2)} with {paymentMethod === 'hubtel' ? 'Hubtel' : 'Moolre'}
+                Pay GH₵ {amountDue(order || {}).toFixed(2)} with {paymentMethod === 'hubtel' ? 'Hubtel' : 'Moolre'}
               </>
             )}
           </button>

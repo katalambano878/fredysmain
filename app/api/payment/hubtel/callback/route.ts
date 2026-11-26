@@ -1,3 +1,4 @@
+import { amountDue } from '@/lib/order-amounts';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { sendOrderConfirmation } from '@/lib/notifications';
@@ -111,7 +112,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
         }
 
-        const expectedAmount = Number(existingOrder.total) || 0;
+        const expectedAmount = amountDue(existingOrder);
 
         if (existingOrder.payment_status === 'paid') {
             await markCallbackProcessed(callbackEvent.eventId, 'ignored', 'Order already paid');

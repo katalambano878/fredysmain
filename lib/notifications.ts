@@ -1,3 +1,4 @@
+import { amountDue, depositPaid } from '@/lib/order-amounts';
 import { Resend } from 'resend';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { escapeHtml } from '@/lib/sanitize';
@@ -605,6 +606,10 @@ export async function sendPaymentLink(order: any) {
     const name = String(getName()).replace(/[<>&"]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Customer';
     const phone = orderPhone || shipping_address?.phone;
 
+    // A preorder with a deposit owes only the balance, and the message must say that figure.
+    const due = amountDue(order);
+    const alreadyPaid = depositPaid(order);
+
     console.log(`[Notification] Sending payment link for Order #${order_number} | Phone: ${phone ? 'Present' : 'Missing'}`);
 
     // Email with payment link
@@ -620,12 +625,14 @@ export async function sendPaymentLink(order: any) {
 
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9fafb;border-radius:12px;overflow:hidden;margin:20px 0;">
   ${emailInfoRow('Order Number', `#${order_number}`)}
-  ${emailInfoRow('Amount Due', `<span style="color:${BRAND.color};font-size:18px;font-weight:700;">GH₵${Number(total).toFixed(2)}</span>`)}
+  ${alreadyPaid > 0 ? emailInfoRow('Order Total', `GH₵${Number(total).toFixed(2)}`) : ''}
+  ${alreadyPaid > 0 ? emailInfoRow('Deposit Received', `GH₵${alreadyPaid.toFixed(2)}`) : ''}
+  ${emailInfoRow(alreadyPaid > 0 ? 'Balance Due' : 'Amount Due', `<span style="color:${BRAND.color};font-size:18px;font-weight:700;">GH₵${due.toFixed(2)}</span>`)}
 </table>
 
 <p style="color:#374151;font-size:14px;line-height:1.6;margin:16px 0;">Click the button below to securely complete your payment. This link will remain active until your order is completed or cancelled.</p>
 
-${emailButton('Pay Now — GH₵' + Number(total).toFixed(2), paymentUrl, '#d97706')}
+${emailButton('Pay Now: GH₵' + due.toFixed(2), paymentUrl, '#d97706')}
 
 <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;">Or copy this link: <a href="${paymentUrl}" style="color:${BRAND.color};">${paymentUrl}</a></p>
 `, `Complete payment for order #${order_number}`)
@@ -633,7 +640,10 @@ ${emailButton('Pay Now — GH₵' + Number(total).toFixed(2), paymentUrl, '#d977
 
     // SMS with payment link
     if (phone) {
-        const smsMessage = `Hi ${name}, complete your order #${order_number} (GH₵${Number(total).toFixed(2)}) here: ${paymentUrl}`;
+        const smsMessage =
+            alreadyPaid > 0
+                ? `Hi ${name}, the balance on your order #${order_number} is GHS ${due.toFixed(2)}. Pay here: ${paymentUrl}`
+                : `Hi ${name}, complete your order #${order_number} (GHS ${due.toFixed(2)}) here: ${paymentUrl}`;
         
         await sendSMS({
             to: phone,
@@ -695,4 +705,41 @@ export async function sendContactMessage(data: { name: string, email: string, su
 ${emailButton('Reply to ' + safeName, `mailto:${safeEmail}?subject=Re: ${encodeURIComponent(subject)}`)}
 `, `New contact from ${safeName}: ${safeSubject}`)
     });
+}
+
+/**
+ * Send a password reset link: by email when the account has a real address, and by text when
+ * it has a phone number (staff logins use a placeholder address, so the text is their only route).
+ */
+export async function sendPasswordReset(target: {
+    email: string;
+    phone: string | null;
+    name: string | null;
+    token: string;
+    expiresInMinutes: number;
+}) {
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://www.frebysfashion.com').replace(/\/+$/, '');
+    const link = `${baseUrl}/auth/reset-password?token=${encodeURIComponent(target.token)}`;
+    const firstName = escapeHtml(String(target.name || '').split(' ')[0] || 'there');
+    const realEmail = target.email && !/\.local$/i.test(target.email) && target.email.includes('@');
+
+    if (realEmail) {
+        await sendEmail({
+            to: target.email,
+            subject: 'Reset your Freby’s Fashion GH password',
+            html: emailLayout(`
+<h2 style="margin:0 0 12px;color:#111827;font-size:22px;">Reset your password</h2>
+<p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 16px;">Hi ${firstName}, use the button below to choose a new password. The link works once and for ${target.expiresInMinutes} minutes.</p>
+${emailButton('Choose a new password', link)}
+<p style="color:#6b7280;font-size:13px;line-height:1.6;margin:16px 0 0;">If you did not ask for this, ignore this email. Your password stays the same.</p>
+`, 'Choose a new password for your account'),
+        });
+    }
+
+    if (target.phone) {
+        await sendSMS({
+            to: target.phone,
+            message: `Freby's Fashion GH: reset your password here (works once, ${target.expiresInMinutes} min): ${link}`,
+        });
+    }
 }

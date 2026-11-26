@@ -1,20 +1,13 @@
 import { NextResponse } from 'next/server';
-import { requireAdminSession } from '@/lib/admin-route-auth';
+import { accraDay } from '@/app/api/admin/_lib/accra-day';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { isPlainPostgres } from '@/lib/db/mode';
 import { query } from '@/lib/db/pool';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 
 /** Ghana business day bounds in Africa/Accra (UTC+0, no DST). */
 function dayBounds(dateStr?: string | null): { day: string; start: string; end: string } {
-  const raw = (dateStr || '').trim();
-  const day = /^\d{4}-\d{2}-\d{2}$/.test(raw)
-    ? raw
-    : new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Accra' });
-  return {
-    day,
-    start: `${day}T00:00:00+00:00`,
-    end: `${day}T23:59:59.999+00:00`,
-  };
+  return accraDay(dateStr);
 }
 
 function isPosMeta(metadata: any): boolean {
@@ -26,7 +19,7 @@ function isPosMeta(metadata: any): boolean {
  * GET /api/admin/end-of-day?date=YYYY-MM-DD
  */
 export async function GET(request: Request) {
-  const err = await requireAdminSession(request);
+  const err = await denyUnlessPermission(request, ['end_of_day']);
   if (err) return err;
 
   const { searchParams } = new URL(request.url);

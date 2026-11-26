@@ -1,3 +1,4 @@
+import { amountDue } from '@/lib/order-amounts';
 import { referenceBelongsToOrder } from '@/lib/payment-refs';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
@@ -107,7 +108,7 @@ export async function POST(req: Request) {
             if (moolreApiVerified) {
                 // No amount in the reply counts as a mismatch: an unpriced "success" must not settle an order.
                 const paidAmount = parseFloat(checkResult.data?.amount);
-                const expectedAmount = Number(order.total);
+                const expectedAmount = amountDue(order);
                 if (!Number.isFinite(paidAmount) || Math.abs(paidAmount - expectedAmount) > 0.01) {
                     console.error('[Verify] AMOUNT MISMATCH! Expected:', expectedAmount, 'Got:', paidAmount);
                     moolreApiVerified = false;

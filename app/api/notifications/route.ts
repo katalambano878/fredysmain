@@ -1,3 +1,4 @@
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { verifyAuth } from '@/lib/auth';
@@ -41,9 +42,22 @@ export async function POST(request: Request) {
         const requiresAdminAuth = adminOnlyTypes.includes(type);
 
         if (requiresAdminAuth) {
-            const auth = await verifyAuth(request, { requireAdmin: true });
-            if (!auth.authenticated) {
-                return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
+            // Each kind of message needs the permission of the screen that sends it.
+            const keysByType: Record<string, string[]> = {
+                campaign: ['notifications'],
+                order_updated: ['orders', 'pos', 'preorders'],
+                order_status: ['orders', 'pos', 'preorders'],
+                payment_link: ['orders', 'pos', 'preorders'],
+            };
+            const keys = keysByType[type];
+            if (keys) {
+                const denied = await denyUnlessPermission(request, keys);
+                if (denied) return denied;
+            } else {
+                const auth = await verifyAuth(request, { requireAdmin: true });
+                if (!auth.authenticated) {
+                    return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
+                }
             }
         }
 

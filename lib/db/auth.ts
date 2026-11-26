@@ -300,3 +300,108 @@ export async function updateUserMetadata(
   const user = await getUserById(userId);
   return { user, error: null };
 }
+
+// ---------------------------------------------------------------------------
+// Password reset
+// ---------------------------------------------------------------------------
+
+const RESET_TTL_SEC = 45 * 60;
+
+/** Ties a reset link to the password it replaces, so the link stops working once used. */
+async function passwordFingerprint(encryptedPassword: string | null | undefined): Promise<string> {
+  const { createHash } = await import("crypto");
+  return createHash("sha256").update(String(encryptedPassword || "")).digest("hex").slice(0, 24);
+}
+
+export type ResetTarget = {
+  userId: string;
+  email: string;
+  phone: string | null;
+  name: string | null;
+  token: string;
+  expiresInMinutes: number;
+};
+
+/**
+ * Find the account for an email address or phone number and make a one-time reset link token.
+ * Returns null when no account matches (the caller must not reveal which).
+ */
+export async function createPasswordReset(identifier: string): Promise<ResetTarget | null> {
+  const raw = String(identifier || "").trim().toLowerCase();
+  if (!raw) return null;
+
+  let row: Record<string, any> | undefined;
+  if (raw.includes("@")) {
+    const found = await query(
+      `SELECT u.id, u.email, u.encrypted_password, p.phone, p.full_name
+         FROM auth.users u LEFT JOIN profiles p ON p.id = u.id
+        WHERE lower(u.email) = $1 LIMIT 1`,
+      [raw]
+    );
+    row = found.rows[0];
+  } else {
+    // A phone number, in any of the usual forms (024…, +23324…, 23324…): compare the last 9 digits.
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length < 9) return null;
+    const tail = digits.slice(-9);
+    const found = await query(
+      `SELECT u.id, u.email, u.encrypted_password, p.phone, p.full_name
+         FROM auth.users u LEFT JOIN profiles p ON p.id = u.id
+        WHERE right(regexp_replace(coalesce(p.phone, ''), '\\D', '', 'g'), 9) = $1
+           OR right(regexp_replace(split_part(u.email, '@', 1), '\\D', '', 'g'), 9) = $1
+        ORDER BY (p.role IN ('admin', 'staff')) DESC
+        LIMIT 2`,
+      [tail]
+    );
+    // Two different accounts on one number: do not guess which one.
+    if (found.rows.length !== 1) return null;
+    row = found.rows[0];
+  }
+  if (!row?.id) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  const token = await new SignJWT({ typ: "recovery", ph: await passwordFingerprint(row.encrypted_password) })
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setSubject(row.id)
+    .setIssuedAt(now)
+    .setExpirationTime(now + RESET_TTL_SEC)
+    .sign(secretKey());
+
+  return {
+    userId: row.id,
+    email: String(row.email || ""),
+    phone: row.phone ? String(row.phone) : null,
+    name: row.full_name ? String(row.full_name) : null,
+    token,
+    expiresInMinutes: RESET_TTL_SEC / 60,
+  };
+}
+
+/** Set a new password from a reset link. The link works once and only until it expires. */
+export async function resetPasswordWithToken(
+  token: string,
+  password: string
+): Promise<{ ok: boolean; error: string | null }> {
+  if (!password || password.length < 8) {
+    return { ok: false, error: "Use a password of at least 8 characters." };
+  }
+  const expired = "This reset link has expired or was already used. Ask for a new one.";
+  try {
+    const { payload } = await jwtVerify(String(token || ""), secretKey());
+    if (payload.typ !== "recovery" || typeof payload.sub !== "string") return { ok: false, error: expired };
+    const { rows } = await query(`SELECT id, encrypted_password FROM auth.users WHERE id = $1 LIMIT 1`, [
+      payload.sub,
+    ]);
+    if (!rows[0]) return { ok: false, error: expired };
+    if ((await passwordFingerprint(rows[0].encrypted_password)) !== payload.ph) return { ok: false, error: expired };
+
+    const hash = bcrypt.hashSync(password, 10);
+    await query(`UPDATE auth.users SET encrypted_password = $1, updated_at = now() WHERE id = $2`, [
+      hash,
+      payload.sub,
+    ]);
+    return { ok: true, error: null };
+  } catch {
+    return { ok: false, error: expired };
+  }
+}

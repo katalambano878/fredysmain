@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireAdminSession } from '@/lib/admin-route-auth';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { mergeOrderMetadata } from '@/lib/order-metadata';
 import { fireMetaPurchaseForOrder } from '@/lib/meta-purchase';
 
@@ -11,7 +11,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const err = await requireAdminSession(request);
+  // Orders, and Preorders too: its screen records a deposit order's balance as paid.
+  const err = await denyUnlessPermission(request, ['orders', 'preorders']);
   if (err) return err;
 
   const { id } = await params;
@@ -47,7 +48,11 @@ export async function POST(
       if (error) throw new Error(error);
     } else {
       // Added to what marking the order paid just recorded, never in place of it.
-      await mergeOrderMetadata({ id }, { manually_marked_paid: true });
+      // Nothing is owed any more, so a preorder's recorded balance is cleared with it.
+      await mergeOrderMetadata(
+        { id },
+        { manually_marked_paid: true, balance_due: 0, paid_in_full_at: new Date().toISOString() }
+      );
     }
 
     const { data: fullOrder } = await supabaseAdmin

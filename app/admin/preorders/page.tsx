@@ -103,6 +103,7 @@ export default function AdminPreordersPage() {
     const [showNew, setShowNew] = useState(false);
     const [sendingLink, setSendingLink] = useState<string | null>(null);
     const [toast, setToast] = useState<string | null>(null);
+    const [recordingBalance, setRecordingBalance] = useState<string | null>(null);
 
     useEffect(() => {
         fetchPreorders();
@@ -147,6 +148,32 @@ export default function AdminPreordersPage() {
             setToast(e?.message || 'Could not send payment link');
         } finally {
             setSendingLink(null);
+        }
+    }
+
+    /** The customer has paid the rest in person: mark the order paid in full. */
+    async function recordBalancePaid(order: PreorderOrder) {
+        const balance = Number(order.metadata?.balance_due) || 0;
+        const question = `Record the balance of ${moneyLabel(balance)} on ${order.order_number} as received? The order will be marked paid in full.`;
+        if (!confirm(question)) return;
+        setRecordingBalance(order.id);
+        setToast(null);
+        try {
+            const { supabase } = await import('@/lib/supabase');
+            const { data: { session } } = await supabase.auth.getSession();
+            const res = await fetch(`/api/admin/orders/${order.id}/mark-paid`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(json.error || 'Could not record the payment');
+            setToast(`${order.order_number} is now paid in full.`);
+            await fetchPreorders();
+        } catch (e: any) {
+            setToast(e?.message || 'Could not record the payment');
+        } finally {
+            setRecordingBalance(null);
         }
     }
 
@@ -512,9 +539,26 @@ export default function AdminPreordersPage() {
                                                         >
                                                             {sendingLink === order.id
                                                                 ? 'Sending…'
-                                                                : 'Send pay link'}
+                                                                : depositPaid && Number.isFinite(balance) && balance > 0
+                                                                  ? `Send pay link for ${moneyLabel(balance)}`
+                                                                  : 'Send pay link'}
                                                         </button>
                                                     )}
+                                                    {order.payment_status !== 'paid' &&
+                                                        depositPaid &&
+                                                        Number.isFinite(balance) &&
+                                                        balance > 0 && (
+                                                            <button
+                                                                type="button"
+                                                                disabled={recordingBalance === order.id}
+                                                                onClick={() => recordBalancePaid(order)}
+                                                                className="text-xs font-semibold text-green-800 hover:text-green-950 disabled:opacity-50"
+                                                            >
+                                                                {recordingBalance === order.id
+                                                                    ? 'Saving…'
+                                                                    : 'Record balance paid'}
+                                                            </button>
+                                                        )}
                                                 </div>
                                             </td>
                                         </tr>

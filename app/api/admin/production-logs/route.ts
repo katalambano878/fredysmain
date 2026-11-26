@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireAdminSession, getAdminUserIdFromRequest } from '@/lib/admin-route-auth';
+import { denyUnlessPermission, getAdminUserIdFromRequest } from '@/lib/admin-route-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +25,7 @@ function monthBounds(ym: string): { start: string; end: string } {
 }
 
 export async function GET(request: Request) {
-  const err = await requireAdminSession(request);
+  const err = await denyUnlessPermission(request, ['finance']);
   if (err) return err;
   const { searchParams } = new URL(request.url);
   const ym = searchParams.get('month') || '';
@@ -51,7 +51,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const err = await requireAdminSession(request);
+  const err = await denyUnlessPermission(request, ['finance']);
   if (err) return err;
   try {
     const body = await request.json();

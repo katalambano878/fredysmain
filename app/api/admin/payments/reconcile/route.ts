@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdminSession } from '@/lib/admin-route-auth';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { reconcilePendingHubtelOrders, reconcileHubtelOrder } from '@/lib/payment-reconcile';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 
@@ -10,7 +10,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
  * Checks Hubtel for unpaid orders that may already be paid at the gateway.
  */
 export async function POST(request: Request) {
-  const err = await requireAdminSession(request);
+  const err = await denyUnlessPermission(request, ['orders', 'pos']);
   if (err) return err;
 
   try {
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
 
 /** GET returns count of pending Hubtel candidates (no gateway calls). */
 export async function GET(request: Request) {
-  const err = await requireAdminSession(request);
+  const err = await denyUnlessPermission(request, ['orders', 'pos']);
   if (err) return err;
 
   const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();

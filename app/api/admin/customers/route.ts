@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminSession } from '@/lib/admin-route-auth';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { loadCustomerDirectory } from './directory';
 
 export const dynamic = 'force-dynamic';
@@ -7,7 +7,7 @@ export const maxDuration = 60;
 
 /** GET /api/admin/customers: every customer with their order count and what they have paid. */
 export async function GET(request: NextRequest) {
-  const authErr = await requireAdminSession(request);
+  const authErr = await denyUnlessPermission(request, ['customers']);
   if (authErr) return authErr;
 
   try {

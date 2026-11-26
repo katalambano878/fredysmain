@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { getAdminActor } from '@/lib/admin-route-auth';
+import { denyUnlessPermission, getAdminActor } from '@/lib/admin-route-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,11 +11,8 @@ export const dynamic = 'force-dynamic';
 const READ_PERMISSIONS = ['products', 'finance', 'delete_staff'];
 
 export async function GET(request: Request) {
-  const actor = await getAdminActor(request);
-  if (!actor) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  if (actor.role !== 'admin' && !READ_PERMISSIONS.some((key) => actor.permissions[key] === true)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const denied = await denyUnlessPermission(request, READ_PERMISSIONS);
+  if (denied) return denied;
   const { searchParams } = new URL(request.url);
   const activeOnly = searchParams.get('active') !== '0';
   let q = supabaseAdmin.from('production_staff').select('*').order('full_name');

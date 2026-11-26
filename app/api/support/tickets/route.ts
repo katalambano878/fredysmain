@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { getAdminUserIdFromRequest, requireAdminSession } from '@/lib/admin-route-auth';
+import { denyUnlessPermission, getAdminUserIdFromRequest } from '@/lib/admin-route-auth';
 
 export async function GET(req: NextRequest) {
-  const authErr = await requireAdminSession(req);
+  const authErr = await denyUnlessPermission(req, ['support']);
   if (authErr) return authErr;
 
   const { searchParams } = new URL(req.url);
@@ -58,7 +58,7 @@ async function nextTicketNumber(): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  const authErr = await requireAdminSession(req);
+  const authErr = await denyUnlessPermission(req, ['support']);
   if (authErr) return authErr;
 
   const body = await req.json().catch(() => null);
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const authErr = await requireAdminSession(req);
+  const authErr = await denyUnlessPermission(req, ['support']);
   if (authErr) return authErr;
 
   const body = await req.json().catch(() => null);

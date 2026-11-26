@@ -1,3 +1,4 @@
+import { amountDue } from '@/lib/order-amounts';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { sendOrderConfirmation } from '@/lib/notifications';
@@ -163,7 +164,7 @@ export async function POST(req: Request) {
 
             const { data: existingOrder, error: fetchError } = await supabaseAdmin
                 .from('orders')
-                .select('id, order_number, payment_status, total')
+                .select('id, order_number, payment_status, total, metadata')
                 .eq('order_number', merchantOrderRef)
                 .single();
 
@@ -182,7 +183,7 @@ export async function POST(req: Request) {
             // SECURITY: Verify amount matches
             const callbackAmount = data.amount ? parseFloat(data.amount) : (body.amount ? parseFloat(body.amount) : null);
             if (callbackAmount !== null) {
-                const expectedAmount = Number(existingOrder.total);
+                const expectedAmount = amountDue(existingOrder);
                 if (Math.abs(callbackAmount - expectedAmount) > 0.01) {
                     console.error('[Callback] AMOUNT MISMATCH — REJECTING! Expected:', expectedAmount, 'Got:', callbackAmount, 'Order:', merchantOrderRef);
                     return NextResponse.json({

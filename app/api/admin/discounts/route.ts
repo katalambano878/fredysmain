@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireAdminSession } from '@/lib/admin-route-auth';
 import {
   MAX_PERCENT_OFF,
   percentPrice,
@@ -162,7 +162,7 @@ function variantLabel(v: any): string {
 }
 
 export async function GET(request: NextRequest) {
-  const authErr = await requireAdminSession(request);
+  const authErr = await denyUnlessPermission(request, ['products']);
   if (authErr) return authErr;
 
   try {
@@ -200,7 +200,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authErr = await requireAdminSession(request);
+  const authErr = await denyUnlessPermission(request, ['products']);
   if (authErr) return authErr;
 
   const body = await request.json().catch(() => null);

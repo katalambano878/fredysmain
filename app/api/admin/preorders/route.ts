@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { isPlainPostgres } from '@/lib/db/mode';
 import { sendPaymentLink, sendOrderConfirmation } from '@/lib/notifications';
 import { fireMetaPurchaseForOrder } from '@/lib/meta-purchase';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 
 function getAccessToken(request: Request): string | null {
   const authHeader = request.headers.get('authorization');
@@ -90,6 +91,9 @@ function buildVariantLabel(item: any): string | null {
  * Staff-created phone / WhatsApp / walk-in / custom made-to-order preorders.
  */
 export async function POST(request: Request) {
+  // Creating a preorder is for staff whose role includes Preorders (or Orders, which covers it).
+  const denied = await denyUnlessPermission(request, ['preorders']);
+  if (denied) return denied;
   const auth = await requireAdminOrStaff(request);
   if ('error' in auth) return auth.error;
 

@@ -1,20 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-
-async function getAuthUser(req: NextRequest) {
-    const token = req.cookies.get('sb-access-token')?.value;
-    if (!token) return null;
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !user) return null;
-    const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).single();
-    if (!profile || (profile.role !== 'admin' && profile.role !== 'staff')) return null;
-    return { ...user, role: profile.role };
-}
 
 // GET — List zones
 export async function GET(req: NextRequest) {
-    const user = await getAuthUser(req);
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const denied = await denyUnlessPermission(req, ['delivery']);
+    if (denied) return denied;
 
     const { data, error } = await supabaseAdmin
         .from('delivery_zones')
@@ -27,8 +18,8 @@ export async function GET(req: NextRequest) {
 
 // POST — Create zone
 export async function POST(req: NextRequest) {
-    const user = await getAuthUser(req);
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const denied = await denyUnlessPermission(req, ['delivery']);
+    if (denied) return denied;
 
     const body = await req.json();
     const { name, description, regions, base_fee, express_fee, estimated_days } = body;
@@ -51,8 +42,8 @@ export async function POST(req: NextRequest) {
 
 // PATCH — Update zone
 export async function PATCH(req: NextRequest) {
-    const user = await getAuthUser(req);
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const denied = await denyUnlessPermission(req, ['delivery']);
+    if (denied) return denied;
 
     const body = await req.json();
     const { id, name, description, regions, base_fee, express_fee, estimated_days, is_active } = body;
@@ -76,8 +67,8 @@ export async function PATCH(req: NextRequest) {
 
 // DELETE — Delete zone
 export async function DELETE(req: NextRequest) {
-    const user = await getAuthUser(req);
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const denied = await denyUnlessPermission(req, ['delivery']);
+    if (denied) return denied;
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');

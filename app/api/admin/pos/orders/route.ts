@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
+import { requireAnyPermission } from '@/lib/admin-route-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { isPlainPostgres } from '@/lib/db/mode';
 
 /** Money to two decimal places, never negative. */
 function money(value: unknown): number {
@@ -8,57 +8,13 @@ function money(value: unknown): number {
   return Number.isFinite(n) && n > 0 ? Math.round((n + Number.EPSILON) * 100) / 100 : 0;
 }
 
-function getAccessToken(request: Request): string | null {
-  const authHeader = request.headers.get('authorization');
-  if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7).trim();
-  const cookieHeader = request.headers.get('cookie') || '';
-  const match = cookieHeader.match(/\bsb-access-token=([^;]+)/);
-  if (match) return decodeURIComponent(match[1].trim());
-  const authCookie = cookieHeader
-    .split(';')
-    .map((c) => c.trim())
-    .find((c) => c.startsWith('sb-') && (c.includes('-auth-token') || c.includes('auth')));
-  if (!authCookie) return null;
-  const value = authCookie.split('=').slice(1).join('=').trim();
-  const decoded = decodeURIComponent(value);
-  try {
-    const parsed = JSON.parse(decoded);
-    if (Array.isArray(parsed) && parsed[0]) return parsed[0];
-    if (parsed?.access_token) return parsed.access_token;
-    if (typeof parsed === 'string') return parsed;
-  } catch {
-    return decoded;
-  }
-  return null;
-}
-
-async function requireAdminOrStaff(request: Request): Promise<{ error: NextResponse } | { userId: string }> {
-  if (!isPlainPostgres() && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return { error: NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 }) };
-  }
-  const token = getAccessToken(request);
-  if (!token) return { error: NextResponse.json({ error: 'Not authenticated' }, { status: 401 }) };
-  const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-  if (userError || !user) return { error: NextResponse.json({ error: 'Invalid session' }, { status: 401 }) };
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-  const role = profile?.role != null ? String(profile.role) : '';
-  if (role !== 'admin' && role !== 'staff') {
-    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-  }
-  return { userId: user.id };
-}
-
 /**
  * POST /api/admin/pos/orders
  * Create a POS order (and items) using service role so RLS does not block walk-in (user_id: null).
  */
 export async function POST(request: Request) {
-  const auth = await requireAdminOrStaff(request);
-  if ('error' in auth) return auth.error;
+  const auth = await requireAnyPermission(request, ['pos']);
+  if (auth instanceof NextResponse) return auth;
 
   try {
     const body = await request.json();

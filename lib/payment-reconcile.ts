@@ -1,3 +1,4 @@
+import { amountDue } from '@/lib/order-amounts';
 import { referenceBelongsToOrder } from '@/lib/payment-refs';
 import { mergeOrderMetadata } from '@/lib/order-metadata';
 import { supabaseAdmin } from '@/lib/supabase-admin';
@@ -58,7 +59,7 @@ export async function reconcileHubtelOrder(order: {
   metadata?: any;
 }): Promise<ReconcileItemResult> {
   const orderNumber = order.order_number;
-  const expected = Number(order.total) || 0;
+  const expected = amountDue(order);
 
   if (order.payment_status === 'paid') {
     return { orderNumber, action: 'skipped', message: 'Already paid', total: expected };

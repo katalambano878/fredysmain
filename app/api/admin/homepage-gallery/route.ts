@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireAdminSession } from '@/lib/admin-route-auth';
 import { normalizeStorageUrl } from '@/lib/storage-url';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  const err = await requireAdminSession(request);
+  const err = await denyUnlessPermission(request, ['products']);
   if (err) return err;
 
   const { data, error } = await supabaseAdmin
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const err = await requireAdminSession(request);
+  const err = await denyUnlessPermission(request, ['products']);
   if (err) return err;
 
   try {

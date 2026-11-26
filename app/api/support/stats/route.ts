@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { accraDay } from '@/app/api/admin/_lib/accra-day';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireAdminSession } from '@/lib/admin-route-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,12 +23,12 @@ async function countOf(table: string, apply?: (q: any) => any): Promise<number |
  * The Support Hub's figures, in the shape that page reads. A figure that cannot be worked out is null.
  */
 export async function GET(req: NextRequest) {
-  const authErr = await requireAdminSession(req);
+  const authErr = await denyUnlessPermission(req, ['support']);
   if (authErr) return authErr;
 
   const now = new Date();
   // The shop runs on Accra time, which is UTC.
-  const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+  const startOfToday = accraDay(null, now).start;
   const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000).toISOString();
   const openStatuses = ['open', 'in_progress', 'waiting_customer'];
 

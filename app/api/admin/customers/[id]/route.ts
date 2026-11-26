@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdminSession } from '@/lib/admin-route-auth';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { loadCustomerDirectory } from '../directory';
 
@@ -11,7 +11,7 @@ export const maxDuration = 60;
  * The id is a customer record id, a guest id from the list, or (older links) an account id.
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authErr = await requireAdminSession(request);
+  const authErr = await denyUnlessPermission(request, ['customers']);
   if (authErr) return authErr;
 
   const { id } = await params;

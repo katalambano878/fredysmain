@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdminSession } from '@/lib/admin-route-auth';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { isPlainPostgres } from '@/lib/db/mode';
 import { query } from '@/lib/db/pool';
@@ -9,7 +9,7 @@ import { query } from '@/lib/db/pool';
  * Never loads the full orders table into the browser.
  */
 export async function GET(request: Request) {
-  const err = await requireAdminSession(request);
+  const err = await denyUnlessPermission(request, ['dashboard']);
   if (err) return err;
 
   const started = Date.now();

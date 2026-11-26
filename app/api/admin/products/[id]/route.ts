@@ -1,34 +1,12 @@
 import { NextResponse } from 'next/server';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { isPlainPostgres } from '@/lib/db/mode';
+import { query } from '@/lib/db/pool';
 import { syncProductCostOfProduction } from '@/lib/product-cop';
 
 export const maxDuration = 30;
 export const dynamic = 'force-dynamic';
-
-function getAccessToken(request: Request): string | null {
-  const authHeader = request.headers.get('authorization');
-  if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7).trim();
-  const cookieHeader = request.headers.get('cookie') || '';
-  const match = cookieHeader.match(/\bsb-access-token=([^;]+)/);
-  if (match) return decodeURIComponent(match[1].trim());
-  const authCookie = cookieHeader
-    .split(';')
-    .map((c) => c.trim())
-    .find((c) => c.startsWith('sb-') && (c.includes('-auth-token') || c.includes('auth')));
-  if (!authCookie) return null;
-  const value = authCookie.split('=').slice(1).join('=').trim();
-  const decoded = decodeURIComponent(value);
-  try {
-    const parsed = JSON.parse(decoded);
-    if (Array.isArray(parsed) && parsed[0]) return parsed[0];
-    if (parsed?.access_token) return parsed.access_token;
-    if (typeof parsed === 'string') return parsed;
-  } catch {
-    return decoded;
-  }
-  return null;
-}
 
 function absoluteMediaUrl(url: string | null | undefined): string {
   if (!url) return url as any;
@@ -36,26 +14,6 @@ function absoluteMediaUrl(url: string | null | undefined): string {
   const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.STORAGE_PUBLIC_URL || '').replace(/\/+$/, '');
   if (!base) return url;
   return url.startsWith('/') ? `${base}${url}` : `${base}/${url}`;
-}
-
-async function requireAdmin(request: Request): Promise<NextResponse | null> {
-  if (!isPlainPostgres() && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 });
-  }
-  const token = getAccessToken(request);
-  if (!token) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-  if (userError || !user) return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-  const role = profile?.role != null ? String(profile.role) : '';
-  if (role !== 'admin' && role !== 'staff') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-  return null;
 }
 
 /**
@@ -66,7 +24,7 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const err = await requireAdmin(request);
+  const err = await denyUnlessPermission(request, ['products']);
   if (err) return err;
 
   const { id: productId } = await params;
@@ -123,7 +81,7 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const err = await requireAdmin(request);
+  const err = await denyUnlessPermission(request, ['products']);
   if (err) return err;
 
   const { id: productId } = await params;
@@ -133,7 +91,30 @@ export async function PUT(
 
   try {
     const body = await request.json();
-    const { variants = [], cop, ...productData } = body;
+    const { variants = [], cop, original_quantity, ...productData } = body;
+
+    // Stock is never overwritten with what the form happened to load. The form sends the stock
+    // it opened with next to the stock now in the box; only the difference is applied, to the
+    // number in the database at this moment. A sale made while the editor was open stays sold.
+    const stockAdjustments: { table: 'products' | 'product_variants'; id: string; delta: number }[] = [];
+    const asWholeNumber = (value: unknown): number | null => {
+      if (value === null || value === undefined || value === '') return null;
+      const n = Number(value);
+      return Number.isFinite(n) ? Math.trunc(n) : null;
+    };
+    const hasSizes = Array.isArray(variants) && variants.length > 0;
+    if (hasSizes) {
+      // The product's own number is the total of its sizes; it is worked out after they are saved.
+      delete productData.quantity;
+    } else {
+      const loaded = asWholeNumber(original_quantity);
+      const typed = asWholeNumber(productData.quantity) ?? 0;
+      if (loaded !== null) {
+        delete productData.quantity;
+        if (typed !== loaded) stockAdjustments.push({ table: 'products', id: productId, delta: typed - loaded });
+      }
+      // No loaded value (an older copy of the form): the typed number is saved as before.
+    }
 
     // Ensure slug uniqueness (ignore the current product)
     let slug: string = productData.slug || productData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
@@ -221,14 +202,22 @@ export async function PUT(
       const metadata: Record<string, unknown> = v.colorHex ? { color_hex: v.colorHex } : {};
       // A switched-off sale price stays while it is still below the price.
       if (price > 0 && keptSalePrice > 0 && keptSalePrice < price) metadata.sale_price = keptSalePrice;
-      const values = {
+      const typedStock = parseInt(v.stock) || 0;
+      const loadedStock = asWholeNumber(v.original_stock);
+      // An existing size whose loaded stock is known: leave its stock alone, or move it by the
+      // difference the admin typed. A new size, or an older copy of the form, saves the typed number.
+      const stockByDifference = Boolean(old) && loadedStock !== null;
+      if (old && stockByDifference && typedStock !== loadedStock) {
+        stockAdjustments.push({ table: 'product_variants', id: old.id, delta: typedStock - (loadedStock as number) });
+      }
+      const values: Record<string, unknown> = {
         product_id: productId,
         name,
         sku: v.sku || null,
         price,
         // A live sale keeps its regular price while it is still above the price.
         compare_at_price: price > 0 && oldCompare > price ? oldCompare : null,
-        quantity: parseInt(v.stock) || 0,
+        ...(stockByDifference ? {} : { quantity: typedStock }),
         option1: v.name || null,
         option2,
         image_url: v.image_url?.trim() || null,
@@ -282,6 +271,35 @@ export async function PUT(
       }
     }
 
+    // Apply the stock differences to the numbers in the database right now.
+    for (const { table, id, delta } of stockAdjustments) {
+      if (isPlainPostgres()) {
+        await query(
+          `UPDATE ${table} SET quantity = GREATEST(0, COALESCE(quantity, 0) + $1), updated_at = now() WHERE id = $2`,
+          [delta, id]
+        );
+      } else {
+        const { data: row } = await supabaseAdmin.from(table).select('quantity').eq('id', id).maybeSingle();
+        const { error: stockError } = await supabaseAdmin
+          .from(table)
+          .update({ quantity: Math.max(0, (Number(row?.quantity) || 0) + delta) })
+          .eq('id', id);
+        if (stockError) return NextResponse.json({ error: stockError.message }, { status: 500 });
+      }
+    }
+
+    // A product sold by size holds the total of its sizes, read back after the changes above.
+    if (hasSizes) {
+      const { data: sizeRows, error: sizeError } = await supabaseAdmin
+        .from('product_variants')
+        .select('quantity')
+        .eq('product_id', productId);
+      if (sizeError) return NextResponse.json({ error: sizeError.message }, { status: 500 });
+      const total = (sizeRows || []).reduce((sum: number, row: any) => sum + (Number(row.quantity) || 0), 0);
+      const { error: totalError } = await supabaseAdmin.from('products').update({ quantity: total }).eq('id', productId);
+      if (totalError) return NextResponse.json({ error: totalError.message }, { status: 500 });
+    }
+
     return NextResponse.json({ ok: true, slug: productData.slug });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Failed to update product' }, { status: 500 });
@@ -297,7 +315,7 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const err = await requireAdmin(request);
+  const err = await denyUnlessPermission(request, ['products']);
   if (err) return err;
 
   const { id: productId } = await params;

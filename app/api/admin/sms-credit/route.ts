@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuth } from '@/lib/auth';
+import { denyUnlessPermission, requireAdminSession } from '@/lib/admin-route-auth';
 import { confirmSmsCheckout, getSmsBilling, startSmsCheckout, taysendConfigured } from '@/lib/taysend-billing';
 
 export const dynamic = 'force-dynamic';
@@ -7,16 +7,10 @@ export const dynamic = 'force-dynamic';
 const PACKAGE_ID = /^[a-z0-9-]{1,40}$/;
 const PAYMENT_ID = /^pay_[A-Za-z0-9]+$/;
 
-async function requireAdmin(request: NextRequest) {
-  const auth = await verifyAuth(request, { requireAdmin: true });
-  if (!auth.authenticated) {
-    return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
-  }
-  return null;
-}
-
 export async function GET(request: NextRequest) {
-  const denied = await requireAdmin(request);
+  // The balance feeds the red "SMS credit is empty" bar on every admin screen, so any signed-in
+  // admin or staff member may read it.
+  const denied = await requireAdminSession(request);
   if (denied) return denied;
   if (!taysendConfigured()) {
     return NextResponse.json({ configured: false });
@@ -34,7 +28,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const denied = await requireAdmin(request);
+  const denied = await denyUnlessPermission(request, ['sms_credit']);
   if (denied) return denied;
   if (!taysendConfigured()) {
     return NextResponse.json({ error: 'SMS buying is not connected on this store yet.' }, { status: 503 });

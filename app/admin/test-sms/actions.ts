@@ -1,20 +1,22 @@
 'use server';
 
-import { verifyAdminToken } from '@/lib/auth';
+import { NextResponse } from 'next/server';
+import { requireAnyPermission } from '@/lib/admin-route-auth';
 import { sendSMS } from '@/lib/notifications';
 
 export async function testSmsAction(phone: string, message: string, authToken: string) {
-    // SECURITY: Verify admin authentication before allowing SMS sending
-    const auth = await verifyAdminToken(authToken);
-    if (!auth.authenticated) {
-        return {
-            success: false,
-            error: 'Unauthorized: ' + (auth.error || 'Admin access required')
-        };
+    // Only someone whose role includes the SMS Debugger may send a test text (it spends SMS credit).
+    const checked = await requireAnyPermission(
+        new Request('http://internal/test-sms', { headers: { authorization: `Bearer ${authToken || ''}` } }),
+        ['sms_debugger']
+    );
+    if (checked instanceof NextResponse) {
+        const reason = await checked.json().catch(() => null);
+        return { success: false, error: reason?.error || 'You are not allowed to send test texts.' };
     }
 
     try {
-        console.log('Testing SMS to:', phone, '| by user:', auth.user?.email);
+        console.log('Testing SMS | by user:', checked.userId);
 
         // Validate phone input
         if (!phone || typeof phone !== 'string') {

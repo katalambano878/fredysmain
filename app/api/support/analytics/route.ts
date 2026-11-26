@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireAdminSession } from '@/lib/admin-route-auth';
 
 export async function GET(req: NextRequest) {
-  const authErr = await requireAdminSession(req);
+  const authErr = await denyUnlessPermission(req, ['support']);
   if (authErr) return authErr;
 
   const { searchParams } = new URL(req.url);

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdminSession } from '@/lib/admin-route-auth';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { loadCustomerDirectory } from '../customers/directory';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +13,7 @@ const DAY = 1000 * 3600 * 24;
  * GET /api/admin/customer-insights?limit=200&search=&segment=
  */
 export async function GET(request: Request) {
-  const err = await requireAdminSession(request);
+  const err = await denyUnlessPermission(request, ['customer_insights']);
   if (err) return err;
 
   const { searchParams } = new URL(request.url);

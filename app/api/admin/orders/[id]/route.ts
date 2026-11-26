@@ -1,48 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { isPlainPostgres } from '@/lib/db/mode';
 import { mergeOrderMetadata } from '@/lib/order-metadata';
-
-function getAccessToken(request: Request): string | null {
-  const authHeader = request.headers.get('authorization');
-  if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7).trim();
-  const cookieHeader = request.headers.get('cookie') || '';
-  const match = cookieHeader.match(/\bsb-access-token=([^;]+)/);
-  if (match) return decodeURIComponent(match[1].trim());
-  const authCookie = cookieHeader
-    .split(';')
-    .map((c) => c.trim())
-    .find((c) => c.startsWith('sb-') && (c.includes('-auth-token') || c.includes('auth')));
-  if (!authCookie) return null;
-  const value = authCookie.split('=').slice(1).join('=').trim();
-  const decoded = decodeURIComponent(value);
-  try {
-    const parsed = JSON.parse(decoded);
-    if (Array.isArray(parsed) && parsed[0]) return parsed[0];
-    if (parsed?.access_token) return parsed.access_token;
-    if (typeof parsed === 'string') return parsed;
-  } catch {
-    return decoded;
-  }
-  return null;
-}
-
-async function requireAdminOrStaff(request: Request): Promise<{ error: NextResponse } | { userId: string }> {
-  if (!isPlainPostgres() && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return { error: NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 }) };
-  }
-  const token = getAccessToken(request);
-  if (!token) return { error: NextResponse.json({ error: 'Not authenticated' }, { status: 401 }) };
-  const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-  if (userError || !user) return { error: NextResponse.json({ error: 'Invalid session' }, { status: 401 }) };
-  const { data: profile } = await supabaseAdmin
-    .from('profiles').select('role').eq('id', user.id).single();
-  const role = profile?.role != null ? String(profile.role) : '';
-  if (role !== 'admin' && role !== 'staff') {
-    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-  }
-  return { userId: user.id };
-}
+import { requireAnyPermission } from '@/lib/admin-route-auth';
 
 const ORDER_SELECT = `
   *,
@@ -69,8 +28,9 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdminOrStaff(request);
-  if ('error' in auth) return auth.error;
+  // Opened from Orders, Sales (the till's sales) and Preorders.
+  const auth = await requireAnyPermission(request, ['orders', 'pos', 'preorders']);
+  if (auth instanceof NextResponse) return auth;
 
   const { id } = await params;
 
@@ -101,8 +61,9 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAdminOrStaff(request);
-  if ('error' in auth) return auth.error;
+  // Status changes come from the Orders and Sales lists and the order page.
+  const auth = await requireAnyPermission(request, ['orders', 'pos']);
+  if (auth instanceof NextResponse) return auth;
 
   const { id } = await params;
 

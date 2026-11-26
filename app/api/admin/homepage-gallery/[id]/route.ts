@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
+import { denyUnlessPermission } from '@/lib/admin-route-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireAdminSession } from '@/lib/admin-route-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +8,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const err = await requireAdminSession(request);
+  const err = await denyUnlessPermission(request, ['products']);
   if (err) return err;
 
   const { id } = await params;
@@ -58,7 +58,7 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const err = await requireAdminSession(request);
+  const err = await denyUnlessPermission(request, ['products']);
   if (err) return err;
 
   const { id } = await params;

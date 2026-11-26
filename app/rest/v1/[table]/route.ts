@@ -163,7 +163,7 @@ export async function PATCH(
   const body = await req.json().catch(() => null);
   if (body == null || typeof body !== "object") return jsonError("Invalid JSON body");
 
-  if (!mayWrite(await resolveCaller(req))) return jsonError("Not allowed", 403);
+  if (!mayWrite(await resolveCaller(req), table, body)) return jsonError("Not allowed", 403);
 
   const client = createClient();
   let qb = client.from(table).update(body);
@@ -189,7 +189,7 @@ export async function DELETE(
   const { table } = await ctx.params;
   if (!PG_IDENT.test(table)) return jsonError("Invalid table");
 
-  if (!mayWrite(await resolveCaller(req))) return jsonError("Not allowed", 403);
+  if (!mayWrite(await resolveCaller(req), table, null, true)) return jsonError("Not allowed", 403);
 
   const client = createClient();
   let qb = client.from(table).delete();

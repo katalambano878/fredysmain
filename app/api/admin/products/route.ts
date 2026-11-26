@@ -1,54 +1,10 @@
 import { NextResponse } from 'next/server';
+import { requireAnyPermission } from '@/lib/admin-route-auth';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { isPlainPostgres } from '@/lib/db/mode';
 import { syncProductCostOfProduction } from '@/lib/product-cop';
 
 export const maxDuration = 30;
 export const dynamic = 'force-dynamic';
-
-function getAccessToken(request: Request): string | null {
-  const authHeader = request.headers.get('authorization');
-  if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7).trim();
-  const cookieHeader = request.headers.get('cookie') || '';
-  const match = cookieHeader.match(/\bsb-access-token=([^;]+)/);
-  if (match) return decodeURIComponent(match[1].trim());
-  const authCookie = cookieHeader
-    .split(';')
-    .map((c) => c.trim())
-    .find((c) => c.startsWith('sb-') && (c.includes('-auth-token') || c.includes('auth')));
-  if (!authCookie) return null;
-  const value = authCookie.split('=').slice(1).join('=').trim();
-  const decoded = decodeURIComponent(value);
-  try {
-    const parsed = JSON.parse(decoded);
-    if (Array.isArray(parsed) && parsed[0]) return parsed[0];
-    if (parsed?.access_token) return parsed.access_token;
-    if (typeof parsed === 'string') return parsed;
-  } catch {
-    return decoded;
-  }
-  return null;
-}
-
-async function requireAdmin(request: Request): Promise<{ error: NextResponse } | { userId: string }> {
-  if (!isPlainPostgres() && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return { error: NextResponse.json({ error: 'Server misconfiguration' }, { status: 503 }) };
-  }
-  const token = getAccessToken(request);
-  if (!token) return { error: NextResponse.json({ error: 'Not authenticated' }, { status: 401 }) };
-  const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-  if (userError || !user) return { error: NextResponse.json({ error: 'Invalid session' }, { status: 401 }) };
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-  const role = profile?.role != null ? String(profile.role) : '';
-  if (role !== 'admin' && role !== 'staff') {
-    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-  }
-  return { userId: user.id };
-}
 
 const PLACEHOLDER_IMAGE = '/frebys-logo.png';
 
@@ -66,8 +22,9 @@ function absoluteMediaUrl(url: string | null | undefined): string {
  * Use this in the admin products list so images always load regardless of RLS.
  */
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request);
-  if ('error' in auth) return auth.error;
+  // Read by Products, Discounts, Inventory, Finance, the till and the preorder form.
+  const auth = await requireAnyPermission(request, ['products', 'inventory', 'finance', 'preorders', 'pos']);
+  if (auth instanceof NextResponse) return auth;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -182,8 +139,8 @@ export async function GET(request: Request) {
  * Handles duplicate slug by appending a numeric suffix.
  */
 export async function POST(request: Request) {
-  const auth = await requireAdmin(request);
-  if ('error' in auth) return auth.error;
+  const auth = await requireAnyPermission(request, ['products']);
+  if (auth instanceof NextResponse) return auth;
 
   try {
     const body = await request.json();

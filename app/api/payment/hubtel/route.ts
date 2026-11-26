@@ -1,3 +1,4 @@
+import { amountDue } from '@/lib/order-amounts';
 import { findOutOfStock } from '@/lib/order-stock';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
@@ -90,7 +91,8 @@ export async function POST(req: Request) {
             }
         }
 
-        const orderTotal = Number(order.total);
+        // What is still owed: the total, or only the balance when a deposit was already taken.
+        const orderTotal = amountDue(order);
         if (!orderTotal || orderTotal <= 0) {
             return NextResponse.json({ success: false, message: 'Invalid order amount' }, { status: 400 });
         }

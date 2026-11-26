@@ -1,3 +1,4 @@
+import { amountDue } from '@/lib/order-amounts';
 import { referenceBelongsToOrder } from '@/lib/payment-refs';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
@@ -53,7 +54,7 @@ export async function POST(req: Request) {
             );
         }
 
-        const expectedAmount = Number(order.total) || 0;
+        const expectedAmount = amountDue(order);
 
         if (order.payment_status === 'paid') {
             return NextResponse.json({

@@ -157,7 +157,21 @@ export async function POST(
   }
 
   if (slug === "recover") {
-    // Password recovery email not wired in staging shim yet
+    // Same reset link as /api/auth/forgot-password. The answer never says whether an account exists.
+    const email = String(body.email || "").trim();
+    const limited =
+      !checkRateLimit(`reset-ip:${getClientIdentifier(req)}`, { maxRequests: 5, windowSeconds: 900 }).success ||
+      !checkRateLimit(`reset-id:${email.toLowerCase()}`, { maxRequests: 3, windowSeconds: 900 }).success;
+    if (email && !limited) {
+      try {
+        const { createPasswordReset } = await import("@/lib/db/auth");
+        const { sendPasswordReset } = await import("@/lib/notifications");
+        const target = await createPasswordReset(email);
+        if (target) await sendPasswordReset(target);
+      } catch (err) {
+        console.error("[auth] recover failed:", err instanceof Error ? err.message : err);
+      }
+    }
     return NextResponse.json({}, { status: 200, headers: cors() });
   }
 
