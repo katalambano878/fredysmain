@@ -12,14 +12,25 @@ export default function NotificationsPage() {
         subject: '',
         message: '',
         channels: { email: true, sms: false },
-        audience: 'all'
     });
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
-        setLoading(true);
         setError('');
         setSuccess('');
+        if (!form.channels.email && !form.channels.sms) {
+            setError('Tick Email, SMS or both.');
+            return;
+        }
+        if (form.channels.email && !form.subject.trim()) {
+            setError('Give the email a subject.');
+            return;
+        }
+        if (!form.message.trim()) {
+            setError('Write the message first.');
+            return;
+        }
+        setLoading(true);
 
         try {
             // 1. Get auth token for admin verification
@@ -44,7 +55,11 @@ export default function NotificationsPage() {
             const recipients: any[] = [];
             for (const c of (customers || [])) {
                 const phones = [c.phone, c.secondary_phone].filter(Boolean).map((p: string) => normalizePhone(p));
-                const emails = [c.email, c.secondary_email].filter(Boolean).map((e: string) => e.toLowerCase().trim());
+                // Walk-in POS customers are stored under a made-up address (0244000000@pos.local): never email those.
+                const emails = [c.email, c.secondary_email]
+                    .filter(Boolean)
+                    .map((e: string) => e.toLowerCase().trim())
+                    .filter((e: string) => !e.endsWith('.local'));
 
                 // Pick first unique phone for this customer
                 const uniquePhone = phones.find(p => !seenPhones.has(p)) || null;
@@ -101,7 +116,9 @@ export default function NotificationsPage() {
                         type: 'campaign',
                         payload: {
                             recipients: batch,
-                            subject: form.subject,
+                            // A subject only matters for email. A text-only campaign still sends a short
+                            // label so the request is accepted either way.
+                            subject: form.channels.email ? form.subject.trim() : form.subject.trim() || 'SMS campaign',
                             message: form.message,
                             channels: form.channels,
                         }
@@ -154,17 +171,9 @@ export default function NotificationsPage() {
                 {error && <div className="bg-red-50 text-red-700 p-4 rounded-lg mb-4">{error}</div>}
 
                 <form onSubmit={handleSend} className="space-y-6">
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">Audience</label>
-                        <select
-                            value={form.audience}
-                            onChange={e => setForm({ ...form, audience: e.target.value })}
-                            className="w-full p-3 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-gray-600"
-                        >
-                            <option value="all">All Customers</option>
-                            <option value="newsletter">Newsletter Subscribers</option>
-                        </select>
-                    </div>
+                    <p className="text-sm text-gray-600">
+                        This goes to every customer on record who has the contact detail for the channel you choose.
+                    </p>
 
                     <div className="flex gap-6 p-4 bg-gray-50 rounded-lg border border-gray-100">
                         <label className="flex items-center gap-2 cursor-pointer">

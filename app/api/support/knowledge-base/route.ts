@@ -3,8 +3,13 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireAdminSession } from '@/lib/admin-route-auth';
 
 export async function GET(req: NextRequest) {
+  // Staff only: this list includes unpublished drafts. (The chat assistant reads articles on the server.)
+  const authErr = await requireAdminSession(req);
+  if (authErr) return authErr;
+
   const { searchParams } = new URL(req.url);
-  const search = searchParams.get('search') || '';
+  // Commas, brackets and dots have a meaning inside an or() filter: drop them from the search text.
+  const search = (searchParams.get('search') || '').replace(/[,()*%\\.]/g, ' ').replace(/\s+/g, ' ').trim();
   const category = searchParams.get('category') || '';
   const published = searchParams.get('published');
 
@@ -51,9 +56,13 @@ export async function PATCH(req: NextRequest) {
   const authErr = await requireAdminSession(req);
   if (authErr) return authErr;
 
-  const body = await req.json();
-  const { id, ...updates } = body;
+  const body = await req.json().catch(() => null);
+  const id = body?.id;
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
+  const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+  for (const key of ['title', 'content', 'category', 'tags', 'is_published']) {
+    if (body[key] !== undefined) updates[key] = body[key];
+  }
 
   const { data, error } = await supabaseAdmin
     .from('support_knowledge_base')

@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 import { requireAdminSession } from '@/lib/admin-route-auth';
-import { isPlainPostgres } from '@/lib/db/mode';
-import { query } from '@/lib/db/pool';
-import { supabaseAdmin } from '@/lib/supabase-admin';
+import { loadCustomerDirectory } from '../customers/directory';
+
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
+const DAY = 1000 * 3600 * 24;
 
 /**
- * Server-side customer segments — no full profiles+orders dump to browser.
- * GET /api/admin/customer-insights?limit=200&search=
+ * Customer segments, built from the same directory as the Customers screen: the customers
+ * table plus every order, matched by account, email or phone. Staff logins are not included.
+ * GET /api/admin/customer-insights?limit=200&search=&segment=
  */
 export async function GET(request: Request) {
   const err = await requireAdminSession(request);
@@ -19,178 +23,77 @@ export async function GET(request: Request) {
   const started = Date.now();
 
   try {
-    if (isPlainPostgres()) {
-      const { rows } = await query<any>(`
-        WITH order_agg AS (
-          SELECT
-            user_id,
-            COUNT(*)::int AS order_count,
-            COALESCE(SUM(total), 0)::float AS total_spent,
-            MAX(created_at) AS last_order_at
-          FROM orders
-          WHERE status IS DISTINCT FROM 'cancelled'
-            AND user_id IS NOT NULL
-          GROUP BY user_id
-        )
-        SELECT
-          p.id,
-          p.full_name,
-          p.email,
-          p.phone,
-          p.created_at,
-          COALESCE(oa.order_count, 0)::int AS order_count,
-          COALESCE(oa.total_spent, 0)::float AS total_spent,
-          oa.last_order_at
-        FROM profiles p
-        LEFT JOIN order_agg oa ON oa.user_id = p.id
-        WHERE ($1 = '' OR LOWER(COALESCE(p.full_name, '')) LIKE '%' || $1 || '%'
-                     OR LOWER(COALESCE(p.email, '')) LIKE '%' || $1 || '%')
-        ORDER BY COALESCE(oa.total_spent, 0) DESC, p.created_at DESC
-        LIMIT $2
-      `, [search, limit]);
-
-      const now = Date.now();
-      const customers = rows.map((r) => {
-        const totalSpent = Number(r.total_spent) || 0;
-        const orderCount = Number(r.order_count) || 0;
-        const lastOrderDate = r.last_order_at || r.created_at;
-        const daysSinceJoin = (now - new Date(r.created_at).getTime()) / (1000 * 3600 * 24);
-        const daysSinceLastOrder = (now - new Date(lastOrderDate).getTime()) / (1000 * 3600 * 24);
-
-        let segment = 'returning';
-        if (totalSpent > 1000) segment = 'vip';
-        else if (orderCount > 1) segment = 'returning';
-        else if (daysSinceLastOrder > 90 && orderCount > 0) segment = 'at-risk';
-        else if (daysSinceJoin < 30) segment = 'new';
-
-        let riskLevel = 'low';
-        if (daysSinceLastOrder > 60) riskLevel = 'medium';
-        if (daysSinceLastOrder > 120) riskLevel = 'high';
-
-        let engagementScore = 50;
-        if (segment === 'vip') engagementScore += 40;
-        if (riskLevel === 'high') engagementScore -= 30;
-        if (daysSinceLastOrder < 30) engagementScore += 20;
-
-        return {
-          id: r.id,
-          name: r.full_name || 'Unknown User',
-          email: r.email,
-          phone: r.phone || '-',
-          segment,
-          totalSpent,
-          orders: orderCount,
-          avgOrderValue: orderCount > 0 ? totalSpent / orderCount : 0,
-          lifetimeValue: totalSpent,
-          joinDate: r.created_at,
-          lastOrder: lastOrderDate,
-          riskLevel,
-          engagementScore: Math.min(100, Math.max(0, engagementScore)),
-          tags: [] as string[],
-        };
-      });
-
-      const filtered =
-        segmentFilter === 'all'
-          ? customers
-          : customers.filter((c) => c.segment === segmentFilter);
-
-      // Stats over the fetched window (not whole DB — honest about sample)
-      const forStats = customers;
-      const totalCLV = forStats.reduce((s, c) => s + c.lifetimeValue, 0);
-
-      return NextResponse.json({
-        success: true,
-        durationMs: Date.now() - started,
-        limit,
-        customers: filtered,
-        stats: {
-          vip: forStats.filter((c) => c.segment === 'vip').length,
-          returning: forStats.filter((c) => c.segment === 'returning').length,
-          new: forStats.filter((c) => c.segment === 'new').length,
-          atRisk: forStats.filter((c) => c.segment === 'at-risk').length,
-          avgCLV: forStats.length > 0 ? totalCLV / forStats.length : 0,
-        },
-      });
-    }
-
-    // Fallback path
-    const { data: profiles } = await supabaseAdmin
-      .from('profiles')
-      .select('id, full_name, email, phone, created_at')
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    const { data: orders } = await supabaseAdmin
-      .from('orders')
-      .select('user_id, total, created_at, status')
-      .neq('status', 'cancelled')
-      .not('user_id', 'is', null)
-      .limit(3000);
-
+    const directory = await loadCustomerDirectory();
     const now = Date.now();
-    const customers = (profiles || []).map((profile: any) => {
-      const userOrders = (orders || []).filter((o: any) => o.user_id === profile.id);
-      const totalSpent = userOrders.reduce((sum: number, o: any) => sum + (Number(o.total) || 0), 0);
-      const orderCount = userOrders.length;
-      const sorted = [...userOrders].sort(
-        (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-      const lastOrderDate = sorted[0]?.created_at || profile.created_at;
-      const daysSinceJoin = (now - new Date(profile.created_at).getTime()) / (1000 * 3600 * 24);
-      const daysSinceLastOrder = (now - new Date(lastOrderDate).getTime()) / (1000 * 3600 * 24);
 
-      let segment = 'returning';
-      if (totalSpent > 1000) segment = 'vip';
-      else if (orderCount > 1) segment = 'returning';
-      else if (daysSinceLastOrder > 90 && orderCount > 0) segment = 'at-risk';
-      else if (daysSinceJoin < 30) segment = 'new';
+    const all = directory.map((c) => {
+      const lastOrderAt = c.lastOrderAt;
+      const daysSinceLastOrder = lastOrderAt ? Math.floor((now - new Date(lastOrderAt).getTime()) / DAY) : null;
 
-      let riskLevel = 'low';
-      if (daysSinceLastOrder > 60) riskLevel = 'medium';
-      if (daysSinceLastOrder > 120) riskLevel = 'high';
+      // One segment each, most specific first.
+      let segment = 'new';
+      if (c.totalSpent > 1000) segment = 'vip';
+      else if (c.orders > 0 && daysSinceLastOrder != null && daysSinceLastOrder > 90) segment = 'at-risk';
+      else if (c.orders > 1) segment = 'returning';
+
+      let riskLevel: 'low' | 'medium' | 'high' | null = null;
+      if (daysSinceLastOrder != null) {
+        riskLevel = daysSinceLastOrder > 120 ? 'high' : daysSinceLastOrder > 60 ? 'medium' : 'low';
+      }
 
       return {
-        id: profile.id,
-        name: profile.full_name || 'Unknown User',
-        email: profile.email,
-        phone: profile.phone || '-',
+        id: c.id,
+        name: c.name || 'No name given',
+        email: c.email || '',
+        phone: c.phone || '',
         segment,
-        totalSpent,
-        orders: orderCount,
-        avgOrderValue: orderCount > 0 ? totalSpent / orderCount : 0,
-        lifetimeValue: totalSpent,
-        joinDate: profile.created_at,
-        lastOrder: lastOrderDate,
+        totalSpent: c.totalSpent,
+        orders: c.orders,
+        avgOrderValue: c.orders > 0 ? Math.round((c.totalSpent / c.orders) * 100) / 100 : 0,
+        lifetimeValue: c.totalSpent,
+        joinDate: c.joinedAt,
+        lastOrder: lastOrderAt,
+        daysSinceLastOrder,
         riskLevel,
-        engagementScore: 50,
-        tags: [],
+        isGuest: c.isGuest,
       };
     });
 
-    const filtered =
-      segmentFilter === 'all'
-        ? customers
-        : customers.filter((c) => c.segment === segmentFilter);
-    const totalCLV = customers.reduce((s, c) => s + c.lifetimeValue, 0);
+    // Counts are for the whole shop, so the tabs do not change as you search.
+    const totalCLV = all.reduce((s, c) => s + c.lifetimeValue, 0);
+    const stats = {
+      total: all.length,
+      vip: all.filter((c) => c.segment === 'vip').length,
+      returning: all.filter((c) => c.segment === 'returning').length,
+      new: all.filter((c) => c.segment === 'new').length,
+      atRisk: all.filter((c) => c.segment === 'at-risk').length,
+      avgCLV: all.length > 0 ? totalCLV / all.length : 0,
+    };
+
+    const phoneSearch = search.replace(/\s+/g, '');
+    const matching = all
+      .filter((c) => segmentFilter === 'all' || c.segment === segmentFilter)
+      .filter(
+        (c) =>
+          !search ||
+          c.name.toLowerCase().includes(search) ||
+          c.email.toLowerCase().includes(search) ||
+          (phoneSearch && c.phone.replace(/\s+/g, '').includes(phoneSearch))
+      )
+      .sort((a, b) => b.totalSpent - a.totalSpent || String(b.lastOrder || '').localeCompare(String(a.lastOrder || '')));
 
     return NextResponse.json({
       success: true,
       durationMs: Date.now() - started,
       limit,
-      customers: filtered,
-      stats: {
-        vip: customers.filter((c) => c.segment === 'vip').length,
-        returning: customers.filter((c) => c.segment === 'returning').length,
-        new: customers.filter((c) => c.segment === 'new').length,
-        atRisk: customers.filter((c) => c.segment === 'at-risk').length,
-        avgCLV: customers.length > 0 ? totalCLV / customers.length : 0,
-      },
+      matching: matching.length,
+      customers: matching.slice(0, limit),
+      stats,
     });
   } catch (e: any) {
     console.error('[admin/customer-insights]', e?.message || e);
     return NextResponse.json(
-      { success: false, error: { code: 'INSIGHTS_FAILED', message: e?.message || 'Failed' } },
+      { success: false, error: { code: 'INSIGHTS_FAILED', message: 'Customer insights could not load.' } },
       { status: 500 }
     );
   }

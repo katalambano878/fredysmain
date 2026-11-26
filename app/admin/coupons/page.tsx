@@ -186,15 +186,18 @@ export default function AdminCouponsPage() {
     const newActive = !c.is_active;
     setCoupons(prev => prev.map(x => x.id === c.id ? { ...x, is_active: newActive } : x));
     try {
-      await fetch('/api/admin/coupons', {
+      const res = await fetch('/api/admin/coupons', {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: c.id, is_active: newActive }),
       });
+      if (!res.ok) throw new Error('not saved');
       showToast(newActive ? 'Coupon activated' : 'Coupon disabled');
     } catch {
+      // Put the switch back: the change did not save.
       setCoupons(prev => prev.map(x => x.id === c.id ? { ...x, is_active: c.is_active } : x));
+      showToast('That change was not saved. Try again.');
     }
   };
 

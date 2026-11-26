@@ -63,7 +63,7 @@ export default function ProductCard({
   price,
   originalPrice,
   image,
-  rating = 5,
+  rating = 0,
   reviewCount = 0,
   badge,
   inStock = true,
@@ -108,12 +108,11 @@ export default function ProductCard({
           )}
         </div>
 
+        {/* Nothing on the shelf does not mean unavailable: the shop makes these to order. */}
         {!inStock && (
-          <div className="absolute inset-0 flex items-center justify-center bg-white/70">
-            <span className="rounded-full bg-gray-900 px-3 py-1.5 text-[10px] font-semibold text-white sm:text-xs">
-              Out of Stock
-            </span>
-          </div>
+          <span className="absolute bottom-1.5 left-1.5 rounded-full bg-gray-900 px-2.5 py-1 text-[10px] font-semibold text-white sm:bottom-2.5 sm:left-2.5 sm:text-xs">
+            Preorder
+          </span>
         )}
       </Link>
 
@@ -121,16 +120,19 @@ export default function ProductCard({
         <div className="mb-1 flex items-center justify-between gap-1 text-[10px] sm:mb-1.5 sm:text-xs">
           <span
             className={`inline-flex items-center rounded-full px-1.5 py-0.5 font-medium sm:px-2 ${
-              inStock ? 'bg-brand-greenLight text-brand-greenDark' : 'bg-gray-100 text-gray-500'
+              inStock ? 'bg-brand-greenLight text-brand-greenDark' : 'bg-amber-50 text-amber-800'
             }`}
           >
-            {inStock ? 'In stock' : 'Unavailable'}
+            {inStock ? 'In stock' : 'Made to order'}
           </span>
-          <div className="inline-flex items-center gap-0.5 text-gray-500">
-            <i className="ri-star-fill text-[10px] text-brand-orange sm:text-xs" />
-            <span>{ratingSafe.toFixed(1)}</span>
-            {reviewCount > 0 && <span className="hidden sm:inline">({reviewCount})</span>}
-          </div>
+          {/* A star rating only when shoppers have actually reviewed the outfit. */}
+          {reviewCount > 0 && ratingSafe > 0 && (
+            <div className="inline-flex items-center gap-0.5 text-gray-600" aria-label={`Rated ${ratingSafe.toFixed(1)} out of 5`}>
+              <i className="ri-star-fill text-[10px] text-brand-orange sm:text-xs" aria-hidden />
+              <span>{ratingSafe.toFixed(1)}</span>
+              <span className="hidden sm:inline">({reviewCount})</span>
+            </div>
+          )}
         </div>
 
         <Link href={`/product/${slug}`} className="mb-1 sm:mb-1.5">
@@ -146,6 +148,7 @@ export default function ProductCard({
                 key={color.name}
                 type="button"
                 title={color.name}
+                aria-label={`Colour: ${color.name}`}
                 onClick={(e) => {
                   e.preventDefault();
                   setActiveColor(activeColor === color.name ? null : color.name);
@@ -168,7 +171,9 @@ export default function ProductCard({
           <span className="text-sm font-extrabold text-gray-900 sm:text-base">
             {hasVariants && minVariantPrice
               ? `From ${moneyLabel(minVariantPrice)}`
-              : moneyLabel(price)}
+              : asNumber(price) > 0
+                ? moneyLabel(price)
+                : 'See sizes'}
           </span>
           {originalPrice != null && asNumber(originalPrice) > 0 && (
             <span className="text-[10px] text-gray-400 line-through sm:text-xs">
@@ -182,21 +187,21 @@ export default function ProductCard({
             href={`/product/${slug}`}
             className="inline-flex w-full items-center justify-center gap-1 rounded-lg border border-brand-green/25 bg-white py-2 text-[11px] font-semibold text-brand-greenDark transition-colors hover:bg-brand-greenLight sm:rounded-xl sm:py-2.5 sm:text-sm"
           >
-            <i className="ri-list-check text-sm" />
-            <span>Options</span>
+            <i className="ri-list-check text-sm" aria-hidden />
+            <span>{inStock ? 'Choose size' : 'Preorder'}</span>
           </Link>
         ) : (
           <button
             type="button"
             onClick={(e) => {
               e.preventDefault();
-              addToCart({ id, name, price, image, quantity: moq, slug, maxStock, moq });
+              addToCart({ id, name, price, image, quantity: moq, slug, maxStock, moq, isPreorder: !inStock });
             }}
-            disabled={!inStock}
-            className="inline-flex w-full items-center justify-center gap-1 rounded-lg bg-brand-orange py-2 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-orangeDark disabled:cursor-not-allowed disabled:bg-gray-300 sm:rounded-xl sm:py-2.5 sm:text-sm"
+            disabled={!(asNumber(price) > 0)}
+            className="inline-flex w-full items-center justify-center gap-1 rounded-lg bg-gray-900 py-2 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-300 sm:rounded-xl sm:py-2.5 sm:text-sm"
           >
-            <i className="ri-shopping-cart-2-line text-sm" />
-            <span>{moq > 1 ? `Add ${moq}` : 'Add'}</span>
+            <i className={`${inStock ? 'ri-shopping-cart-2-line' : 'ri-time-line'} text-sm`} aria-hidden />
+            <span>{!inStock ? 'Preorder' : moq > 1 ? `Add ${moq}` : 'Add'}</span>
           </button>
         )}
       </div>

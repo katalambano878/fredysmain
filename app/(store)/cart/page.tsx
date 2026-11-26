@@ -3,60 +3,21 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useState } from 'react';
-import CartCountdown from '@/components/CartCountdown';
-import AdvancedCouponSystem from '@/components/AdvancedCouponSystem';
-import { useCart } from '@/context/CartContext';
+import CouponField from '@/components/CouponField';
+import type { CouponPreview } from '@/lib/applied-coupon';
+import { cartLineLimit, useCart } from '@/context/CartContext';
 import PageHero from '@/components/PageHero';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { HERO_IMAGES } from '@/lib/hero-images';
 
 export default function CartPage() {
   usePageTitle('Shopping Cart');
-  const { cart: cartItems, removeFromCart, updateQuantity, subtotal, addToCart, isHydrated } = useCart();
-  const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
-  const [savedItems, setSavedItems] = useState<any[]>([]);
+  const { cart: cartItems, removeFromCart, updateQuantity, subtotal, isHydrated } = useCart();
+  const [appliedCoupon, setAppliedCoupon] = useState<CouponPreview | null>(null);
 
-  // Function to move item to saved for later (local state only for now)
-  const saveForLater = (id: string) => {
-    const item = cartItems.find(item => item.id === id);
-    if (item) {
-      setSavedItems([...savedItems, item]);
-      removeFromCart(item.id, item.variant); // Use context's removeFromCart
-    }
-  };
-
-  const moveToCart = (id: string) => {
-    const item = savedItems.find(item => item.id === id);
-    if (item) {
-      // addToCart expects a CartItem object which already includes quantity
-      addToCart(item);
-      setSavedItems(savedItems.filter(item => item.id !== id));
-    }
-  };
-
-  const applyCoupon = (coupon: any) => {
-    setAppliedCoupon(coupon);
-  };
-
-  const removeCoupon = () => {
-    setAppliedCoupon(null);
-  };
-
-  // Savings calculation is tricky without originalPrice in Context.
-  // Assuming 0 for now unless we update Context.
-  const savings = 0;
-
-  let couponDiscount = 0;
-  if (appliedCoupon) {
-    if (appliedCoupon.type === 'percentage') {
-      couponDiscount = subtotal * (appliedCoupon.discount / 100);
-    } else {
-      couponDiscount = appliedCoupon.discount;
-    }
-  }
-
-  const shipping = subtotal >= 200 ? 0 : 15;
-  const total = subtotal - couponDiscount + shipping;
+  // The server works out what a coupon is worth; checkout charges the same figure.
+  const couponDiscount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
+  const total = Math.max(0, subtotal - couponDiscount);
   const hasPreorderItems = cartItems.some((i) => i.isPreorder);
 
   return (
@@ -64,8 +25,6 @@ export default function CartPage() {
       <PageHero title="Shopping Cart" image={HERO_IMAGES.cart} imagePosition="50% 40%" />
       <div className="py-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-        <CartCountdown />
-        {/* <FreeShippingBar currentAmount={subtotal} threshold={200} /> */}
 
         {hasPreorderItems && (
           <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
@@ -83,14 +42,14 @@ export default function CartPage() {
           <section className="py-20 flex justify-center">
             <div className="w-12 h-12 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
           </section>
-        ) : cartItems.length === 0 && savedItems.length === 0 ? (
+        ) : cartItems.length === 0 ? (
           <section className="py-20">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
               <div className="w-24 h-24 flex items-center justify-center mx-auto mb-6 bg-gray-200 rounded-full">
                 <i className="ri-shopping-cart-line text-5xl text-gray-400"></i>
               </div>
               <h2 className="text-3xl font-bold text-gray-900 mb-4">Your cart is empty</h2>
-              <p className="text-gray-600 mb-8 text-lg">Looks like you&#39;t added anything to your cart yet</p>
+              <p className="text-gray-600 mb-8 text-lg">You have not added anything to your cart yet</p>
               <Link href="/shop" className="inline-block bg-gray-900 hover:bg-gray-800 text-white px-8 py-4 rounded-lg font-semibold transition-colors whitespace-nowrap">
                 Continue Shopping
               </Link>
@@ -104,14 +63,11 @@ export default function CartPage() {
                   <div className="bg-white rounded-xl shadow-sm p-6 overflow-hidden">
                     <div className="flex items-center justify-between mb-6">
                       <h2 className="text-2xl font-bold text-gray-900">Cart Items ({cartItems.length})</h2>
-                      {savings > 0 && (
-                        <span className="text-gray-900 font-semibold">You save GH₵{savings.toFixed(2)}</span>
-                      )}
                     </div>
 
                     <div className="space-y-6">
                       {cartItems.map((item) => (
-                        <div key={`${item.id}-${item.variant || ''}`} className="flex flex-col sm:flex-row gap-4 sm:gap-6 pb-6 border-b border-gray-200 last:border-0 last:pb-0">
+                        <div key={`${item.id}-${item.variantId || item.variant || ''}`} className="flex flex-col sm:flex-row gap-4 sm:gap-6 pb-6 border-b border-gray-200 last:border-0 last:pb-0">
                           <Link href={`/product/${item.slug || item.id}`} className="relative w-full sm:w-32 h-48 sm:h-32 flex-shrink-0 bg-gray-100 rounded-lg overflow-hidden">
                             <Image src={item.image} alt={item.name} fill className="object-cover object-top" sizes="(max-width: 640px) 100vw, 128px" quality={70} />
                           </Link>
@@ -122,18 +78,19 @@ export default function CartPage() {
                                 {item.name}
                               </Link>
                               <button
-                                onClick={() => removeFromCart(item.id, item.variant)}
-                                className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-600 transition-colors"
+                                onClick={() => removeFromCart(item.id, item.variant, item.variantId)}
+                                aria-label={`Remove ${item.name}`}
+                                className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-red-600 transition-colors"
                               >
-                                <i className="ri-close-line text-xl"></i>
+                                <i className="ri-close-line text-xl" aria-hidden></i>
                               </button>
                             </div>
 
                             <div className="text-sm text-gray-600 mb-3 space-y-1">
-                              {item.variant && <p>Variant: {item.variant}</p>}
+                              {item.variant && <p>Size: {item.variant}</p>}
                               {item.isPreorder ? (
                                 <p className="inline-flex items-center gap-1.5 text-amber-800 font-medium bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                                  <i className="ri-time-line"></i>
+                                  <i className="ri-time-line" aria-hidden></i>
                                   Preorder · ready in 3–4 business days
                                 </p>
                               ) : (
@@ -150,29 +107,32 @@ export default function CartPage() {
                                 <div className="flex flex-col">
                                   <div className="flex items-center border-2 border-gray-300 rounded-lg">
                                     <button
-                                      onClick={() => updateQuantity(item.id, item.quantity - 1, item.variant)}
+                                      onClick={() => updateQuantity(item.id, item.quantity - 1, item.variant, item.variantId)}
                                       className="w-10 h-10 flex items-center justify-center text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
-                                      title={item.quantity <= (item.moq || 1) ? 'Remove item' : 'Decrease quantity'}
+                                      aria-label={item.quantity <= (item.moq || 1) ? `Remove ${item.name}` : `One less ${item.name}`}
                                     >
                                       {item.quantity <= (item.moq || 1) ? (
-                                        <i className="ri-delete-bin-line text-red-500"></i>
+                                        <i className="ri-delete-bin-line text-red-600" aria-hidden></i>
                                       ) : (
-                                        <i className="ri-subtract-line"></i>
+                                        <i className="ri-subtract-line" aria-hidden></i>
                                       )}
                                     </button>
                                     <input
                                       type="number"
                                       value={item.quantity}
-                                      onChange={(e) => updateQuantity(item.id, parseInt(e.target.value) || (item.moq || 1), item.variant)}
-                                      className="w-12 h-10 text-center border-x-2 border-gray-300 focus:outline-none font-semibold"
+                                      onChange={(e) => updateQuantity(item.id, parseInt(e.target.value) || (item.moq || 1), item.variant, item.variantId)}
+                                      aria-label={`Quantity of ${item.name}`}
+                                      className="w-12 h-10 text-center border-x-2 border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-600 font-semibold"
                                       min={item.moq || 1}
-                                      max={item.maxStock}
+                                      max={cartLineLimit(item)}
                                     />
                                     <button
-                                      onClick={() => updateQuantity(item.id, item.quantity + 1, item.variant)}
-                                      className="w-10 h-10 flex items-center justify-center text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+                                      onClick={() => updateQuantity(item.id, item.quantity + 1, item.variant, item.variantId)}
+                                      disabled={item.quantity >= cartLineLimit(item)}
+                                      aria-label={`One more ${item.name}`}
+                                      className="w-10 h-10 flex items-center justify-center text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                                     >
-                                      <i className="ri-add-line"></i>
+                                      <i className="ri-add-line" aria-hidden></i>
                                     </button>
                                   </div>
                                   {(item.moq || 1) > 1 && (
@@ -184,40 +144,12 @@ export default function CartPage() {
                               </div>
                             </div>
 
-                            {/* Saved for later functionality temporarily disabled until fully implemented with Context integration if requested */}
-                            {/*
-                            <button
-                              onClick={() => saveForLater(item.id)}
-                              className="mt-3 text-sm text-gray-900 hover:text-gray-800 font-medium whitespace-nowrap"
-                            >
-                              Save for Later
-                            </button>
-                            */}
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  {savedItems.length > 0 && (
-                    <div className="bg-white rounded-xl shadow-sm p-6">
-                      <h3 className="text-xl font-bold text-gray-900 mb-4">Saved for Later ({savedItems.length})</h3>
-                      <div className="space-y-4">
-                        {savedItems.map((item) => (
-                          <div key={item.id} className="flex gap-4 pb-4 border-b border-gray-200 last:border-0 last:pb-0">
-                            <div className="relative w-20 h-20 flex-shrink-0 bg-gray-100 rounded-lg overflow-hidden">
-                              <Image src={item.image} alt={item.name} fill className="object-cover object-top" sizes="80px" quality={60} />
-                            </div>
-                            <div className="flex-1">
-                              <p className="font-semibold text-gray-900 mb-1">{item.name}</p>
-                              <p className="text-lg font-bold text-gray-900 mb-2">GH₵{item.price.toFixed(2)}</p>
-                              {/* Move to cart disabled for now */}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <div className="space-y-6">
@@ -239,16 +171,12 @@ export default function CartPage() {
                         </div>
                       )}
 
-                      <div className="flex justify-between text-gray-700">
-                        <span>Shipping</span>
-                        <span className="font-semibold">{shipping === 0 ? 'FREE' : `GH₵${shipping.toFixed(2)}`}</span>
+                      <div className="flex justify-between gap-4 text-gray-700">
+                        <span>Delivery</span>
+                        <span className="text-right text-sm">
+                          Store pickup is free. For doorstep delivery we confirm the cost with you after you order.
+                        </span>
                       </div>
-
-                      {shipping > 0 && (
-                        <p className="text-sm text-amber-600">
-                          {/* Shipping threshold text removed */}
-                        </p>
-                      )}
                     </div>
 
                     <div className="border-t border-gray-200 pt-4 mb-6">
@@ -258,12 +186,7 @@ export default function CartPage() {
                       </div>
                     </div>
 
-                    <AdvancedCouponSystem
-                      subtotal={subtotal}
-                      onApply={applyCoupon}
-                      onRemove={removeCoupon}
-                      appliedCoupon={appliedCoupon}
-                    />
+                    <CouponField subtotal={subtotal} onChange={setAppliedCoupon} />
 
                     <Link
                       href="/checkout"
@@ -285,12 +208,8 @@ export default function CartPage() {
                         <span>Secure checkout</span>
                       </div>
                       <div className="flex items-center text-sm text-gray-600">
-                        <i className="ri-truck-line text-gray-900 mr-2"></i>
-                        <span>Delivers in 24 - 48 hours</span>
-                      </div>
-                      <div className="flex items-center text-sm text-gray-600">
-                        <i className="ri-customer-service-line text-gray-900 mr-2"></i>
-                        <span>24/7 support</span>
+                        <i className="ri-smartphone-line text-gray-900 mr-2" aria-hidden></i>
+                        <span>Pay with Mobile Money</span>
                       </div>
                     </div>
                   </div>

@@ -52,6 +52,7 @@ export default function AssignmentsPage() {
     const [unassignedOrders, setUnassignedOrders] = useState<Order[]>([]);
     const [riders, setRiders] = useState<Rider[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
     const [total, setTotal] = useState(0);
 
     const [filterStatus, setFilterStatus] = useState(searchParams.get('status') || 'all');
@@ -79,9 +80,13 @@ export default function AssignmentsPage() {
                 fetch('/api/delivery/riders?status=active'),
             ]);
 
+            for (const res of [assignRes, unassignedRes, ridersRes]) {
+                if (!res.ok) throw new Error(res.status === 401 ? 'Your session has expired. Sign in again.' : 'The delivery data could not load.');
+            }
             const assignData = await assignRes.json();
             const unassignedData = await unassignedRes.json();
             const ridersData = await ridersRes.json();
+            setLoadError('');
 
             setAssignments(assignData.assignments || []);
             setTotal(assignData.total || 0);
@@ -89,6 +94,7 @@ export default function AssignmentsPage() {
             setRiders(ridersData.riders || []);
         } catch (err) {
             console.error('Failed to fetch:', err);
+            setLoadError(err instanceof Error ? err.message : 'The delivery data could not load.');
         } finally {
             setLoading(false);
         }
@@ -196,6 +202,11 @@ export default function AssignmentsPage() {
             </div>
 
             <DeliveryNav />
+            {loadError && (
+                <p role="alert" className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                    {loadError} The figures below may be out of date or empty.
+                </p>
+            )}
 
             {loading ? (
                 <div className="flex items-center justify-center py-20">

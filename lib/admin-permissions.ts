@@ -40,6 +40,7 @@ export function permissionForPath(pathname: string): string | null {
   if (pathname.startsWith('/admin/support')) return 'support';
   if (pathname.startsWith('/admin/customer-insights')) return 'customer_insights';
   if (pathname.startsWith('/admin/notifications')) return 'notifications';
+  if (pathname.startsWith('/admin/sms-credit')) return 'sms_credit';
   if (pathname.startsWith('/admin/test-sms')) return 'sms_debugger';
   if (pathname.startsWith('/admin/blog')) return 'blog';
   if (pathname.startsWith('/admin/delivery')) return 'delivery';
@@ -67,19 +68,40 @@ export function canAccessPath(
   return false;
 }
 
+/**
+ * Where each permission lets someone land, most useful first. Every permission key that opens a
+ * screen is listed, so a role with a single permission (say, only Customers or only Reviews)
+ * lands on its own page instead of being bounced to the login screen.
+ */
+const LANDING_PAGES: readonly (readonly [string, string])[] = [
+  ['inventory', '/admin/inventory'],
+  ['end_of_day', '/admin/end-of-day'],
+  ['orders', '/admin/orders'],
+  ['pos', '/admin/pos'],
+  ['products', '/admin/products'],
+  ['delete_staff', '/admin/production-team'],
+  ['dashboard', '/admin'],
+  ['preorders', '/admin/preorders'],
+  ['customers', '/admin/customers'],
+  ['categories', '/admin/categories'],
+  ['reviews', '/admin/reviews'],
+  ['delivery', '/admin/delivery'],
+  ['support', '/admin/support'],
+  ['coupons', '/admin/coupons'],
+  ['finance', '/admin/finance'],
+  ['analytics', '/admin/analytics'],
+  ['customer_insights', '/admin/customer-insights'],
+  ['notifications', '/admin/notifications'],
+  ['blog', '/admin/blog'],
+  ['sms_credit', '/admin/sms-credit'],
+  ['sms_debugger', '/admin/test-sms'],
+  ['modules', '/admin/modules'],
+];
+
 /** First allowed admin landing page for limited staff */
 export function firstAllowedAdminPath(permissions: Record<string, boolean>): string {
-  const order = [
-    ['inventory', '/admin/inventory'],
-    ['end_of_day', '/admin/end-of-day'],
-    ['orders', '/admin/orders'],
-    ['pos', '/admin/pos'],
-    ['products', '/admin/products'],
-    ['delete_staff', '/admin/production-team'],
-    ['dashboard', '/admin'],
-  ] as const;
-  for (const [key, path] of order) {
-    if (permissions[key] === true) return path;
+  for (const [key, path] of LANDING_PAGES) {
+    if (permissions?.[key] === true) return path;
   }
   return '/admin/login?error=unauthorized';
 }

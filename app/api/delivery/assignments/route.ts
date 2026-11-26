@@ -11,6 +11,19 @@ async function getAuthUser(req: NextRequest) {
     return { ...user, role: profile.role, fullName: profile.full_name };
 }
 
+/** Deliveries that still hold the order: anything that has not failed or been returned. */
+const ACTIVE_OR_DONE = ['assigned', 'picked_up', 'in_transit', 'delivered'];
+
+/** The steps a delivery may move through. A delivered or returned delivery is final. */
+const NEXT_STATUSES: Record<string, string[]> = {
+    assigned: ['picked_up', 'in_transit', 'delivered', 'failed', 'returned'],
+    picked_up: ['in_transit', 'delivered', 'failed', 'returned'],
+    in_transit: ['delivered', 'failed', 'returned'],
+    failed: ['assigned', 'picked_up', 'in_transit', 'returned'],
+    delivered: [],
+    returned: [],
+};
+
 // GET — List assignments with filters
 export async function GET(req: NextRequest) {
     const user = await getAuthUser(req);
@@ -58,15 +71,25 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'order_id and rider_id are required' }, { status: 400 });
     }
 
-    // Check if order is already assigned (active assignment)
+    // The order must still be one that can go out for delivery.
+    const { data: order } = await supabaseAdmin.from('orders').select('id, status').eq('id', order_id).maybeSingle();
+    if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    if (['cancelled', 'refunded', 'delivered'].includes(String(order.status))) {
+        return NextResponse.json(
+            { error: `This order is ${order.status}, so it cannot be sent out for delivery.` },
+            { status: 409 }
+        );
+    }
+
+    // Check if order is already assigned (a delivery that has not failed or been returned)
     const { data: existing } = await supabaseAdmin
         .from('delivery_assignments')
         .select('id, status')
         .eq('order_id', order_id)
-        .not('status', 'in', '("failed","returned")')
-        .maybeSingle();
+        .in('status', ACTIVE_OR_DONE)
+        .limit(1);
 
-    if (existing) {
+    if (existing && existing.length > 0) {
         return NextResponse.json({ error: 'This order already has an active delivery assignment' }, { status: 409 });
     }
 
@@ -136,6 +159,27 @@ export async function PATCH(req: NextRequest) {
 
     if (!current) return NextResponse.json({ error: 'Assignment not found' }, { status: 404 });
 
+    if (current.status !== status && !(NEXT_STATUSES[current.status] || []).includes(status)) {
+        return NextResponse.json(
+            { error: `A delivery that is ${String(current.status).replace(/_/g, ' ')} cannot be changed to ${status.replace(/_/g, ' ')}.` },
+            { status: 409 }
+        );
+    }
+
+    // A cancelled or refunded order must stay that way: its delivery can only be closed off.
+    const { data: order } = await supabaseAdmin
+        .from('orders')
+        .select('id, status')
+        .eq('id', current.order_id)
+        .maybeSingle();
+    const orderClosed = ['cancelled', 'refunded'].includes(String(order?.status));
+    if (orderClosed && !['failed', 'returned'].includes(status)) {
+        return NextResponse.json(
+            { error: `This order was ${order?.status}. Mark the delivery as failed or returned instead.` },
+            { status: 409 }
+        );
+    }
+
     const now = new Date().toISOString();
     const updateData: any = { status, updated_at: now };
 
@@ -164,7 +208,7 @@ export async function PATCH(req: NextRequest) {
         failed: 'processing',
     };
 
-    if (orderStatusMap[status]) {
+    if (orderStatusMap[status] && !orderClosed) {
         await supabaseAdmin.from('orders').update({
             status: orderStatusMap[status],
             updated_at: now,
@@ -199,13 +243,15 @@ export async function DELETE(req: NextRequest) {
         return NextResponse.json({ error: 'Cannot delete an in-progress or completed delivery' }, { status: 400 });
     }
 
-    await supabaseAdmin.from('delivery_assignments').delete().eq('id', id);
+    const { error: deleteError } = await supabaseAdmin.from('delivery_assignments').delete().eq('id', id);
+    if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
 
-    // Revert order status
+    // Put the order back to "processing" only if it is still waiting on this delivery.
+    // (An order that was cancelled in the meantime must stay cancelled.)
     await supabaseAdmin.from('orders').update({
         status: 'processing',
         updated_at: new Date().toISOString(),
-    }).eq('id', assignment.order_id);
+    }).eq('id', assignment.order_id).eq('status', 'dispatched_to_rider');
 
     return NextResponse.json({ success: true });
 }

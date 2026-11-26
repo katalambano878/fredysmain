@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { sendSMS } from '@/lib/notifications';
+import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limit';
 
 const ADMIN_PHONE = process.env.CONTACT_PHONE || '0244720197';
 
 export async function POST(req: NextRequest) {
   try {
+    // Each request texts the shop, so one visitor may only send a few.
+    if (!checkRateLimit(`gallery-preorder:${getClientIdentifier(req)}`, { maxRequests: 4, windowSeconds: 600 }).success) {
+      return NextResponse.json(
+        { error: 'You have sent several requests already. Please wait a few minutes, or call us.' },
+        { status: 429 }
+      );
+    }
     const body = await req.json();
     const {
       gallery_item_id,

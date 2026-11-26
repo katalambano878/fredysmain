@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireAdminSession } from '@/lib/admin-route-auth';
+import { mergeOrderMetadata } from '@/lib/order-metadata';
 import { fireMetaPurchaseForOrder } from '@/lib/meta-purchase';
 
 /**
@@ -38,21 +39,15 @@ export async function POST(
     if (rpcError) {
       // Fallback: still mark paid + flag metadata if RPC missing
       console.error('[mark-paid] RPC failed, falling back to update:', rpcError.message);
-      const { error } = await supabaseAdmin
-        .from('orders')
-        .update({
-          payment_status: 'paid',
-          metadata: { manually_marked_paid: true, rpc_fallback: true },
-        })
-        .eq('id', id);
-      if (error) throw error;
+      const { error } = await mergeOrderMetadata(
+        { id },
+        { manually_marked_paid: true, rpc_fallback: true },
+        { payment_status: 'paid' }
+      );
+      if (error) throw new Error(error);
     } else {
-      await supabaseAdmin
-        .from('orders')
-        .update({
-          metadata: { manually_marked_paid: true },
-        })
-        .eq('id', id);
+      // Added to what marking the order paid just recorded, never in place of it.
+      await mergeOrderMetadata({ id }, { manually_marked_paid: true });
     }
 
     const { data: fullOrder } = await supabaseAdmin

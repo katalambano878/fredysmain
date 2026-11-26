@@ -117,7 +117,7 @@ export async function GET(request: Request) {
       .select(`
         *,
         categories(name),
-        product_variants(count),
+        product_variants(price, quantity),
         product_images(url, position),
         created_by_profile:profiles!products_created_by_fkey(full_name)
       `);
@@ -139,6 +139,10 @@ export async function GET(request: Request) {
       const rawFirstUrl = images.find((img: any) => Number(img.position) === 0)?.url
         || images[0]?.url;
       const firstImageUrl = rawFirstUrl ? absoluteMediaUrl(rawFirstUrl) : PLACEHOLDER_IMAGE;
+      const variantRows: any[] = Array.isArray(p.product_variants) ? p.product_variants : [];
+      const variantPrices = variantRows.map((v) => Number(v.price)).filter((n) => Number.isFinite(n) && n > 0);
+      const ownPrice = Number(p.price) || 0;
+      const lowestVariantPrice = variantPrices.length ? Math.min(...variantPrices) : 0;
 
       return {
         ...p,
@@ -148,7 +152,17 @@ export async function GET(request: Request) {
           ...img,
           url: img.url ? absoluteMediaUrl(img.url) : img.url,
         })),
-        variantsCount: p.product_variants?.[0]?.count || 0,
+        variantsCount: variantRows.length,
+        // Most outfits are priced per size, so the product's own price is 0: show the lowest size price.
+        display_price: ownPrice > 0 ? ownPrice : lowestVariantPrice,
+        price_is_from: !(ownPrice > 0) && variantPrices.length > 1 && new Set(variantPrices).size > 1,
+        // What the stock on hand would sell for: each size's quantity at that size's price.
+        stock_value: variantRows.length
+          ? variantRows.reduce(
+              (sum, v) => sum + (Number(v.quantity) || 0) * (Number(v.price) > 0 ? Number(v.price) : ownPrice),
+              0
+            )
+          : ownPrice * (Number(p.quantity) || 0),
         stock: p.quantity,
         sales: 0,
         rating: p.rating_avg || 0,

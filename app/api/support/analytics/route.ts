@@ -72,6 +72,24 @@ export async function GET(req: NextRequest) {
     ? responded.reduce((sum: number, t: any) => sum + (new Date(t.first_response_at).getTime() - new Date(t.created_at).getTime()), 0) / responded.length
     : 0;
 
+  // Daily counts, worked out from the conversations and tickets themselves. (The table that was
+  // meant to hold them is never filled, so the chart used to stay hidden.)
+  const byDay = new Map<string, { date: string; total_conversations: number; total_tickets_created: number; total_tickets_resolved: number }>();
+  const dayOf = (iso: unknown) => String(iso || '').slice(0, 10);
+  const bucket = (date: string) => {
+    if (!byDay.has(date)) byDay.set(date, { date, total_conversations: 0, total_tickets_created: 0, total_tickets_resolved: 0 });
+    return byDay.get(date)!;
+  };
+  for (const c of conversations) if (dayOf(c.created_at)) bucket(dayOf(c.created_at)).total_conversations += 1;
+  for (const t of tickets) {
+    if (dayOf(t.created_at)) bucket(dayOf(t.created_at)).total_tickets_created += 1;
+    if (t.resolved_at && dayOf(t.resolved_at)) bucket(dayOf(t.resolved_at)).total_tickets_resolved += 1;
+  }
+  const storedDaily = Array.isArray(dailyRes.data) ? dailyRes.data : [];
+  const dailyData = storedDaily.length
+    ? storedDaily
+    : Array.from(byDay.values()).sort((a, b) => a.date.localeCompare(b.date));
+
   return NextResponse.json({
     summary: {
       totalConversations: conversations.length,
@@ -87,7 +105,7 @@ export async function GET(req: NextRequest) {
     categoryBreakdown,
     sentimentBreakdown,
     ratingDistribution: ratingDist,
-    dailyData: dailyRes.data || [],
+    dailyData,
     ticketStatusBreakdown: {
       open: tickets.filter((t: any) => t.status === 'open').length,
       in_progress: tickets.filter((t: any) => t.status === 'in_progress').length,

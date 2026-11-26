@@ -17,6 +17,8 @@ type BlogPost = {
   created_at: string;
 };
 
+type RelatedPost = Omit<BlogPost, 'content'>;
+
 function formatDate(iso: string | null) {
   if (!iso) return '';
   return new Date(iso).toLocaleDateString('en-GB', {
@@ -30,18 +32,21 @@ export default function BlogPostPage() {
   const params = useParams();
   const id = String(params?.id || '');
   const [post, setPost] = useState<BlogPost | null>(null);
-  const [related, setRelated] = useState<BlogPost[]>([]);
+  const [related, setRelated] = useState<RelatedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     async function load() {
       if (!id) return;
+      // The link may carry the post's id or its slug. A slug must not be compared with the id column:
+      // the database rejects a non-UUID there and the post would read as "not found".
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
       const { data, error } = await supabase
         .from('blog_posts')
         .select('id, title, slug, content, excerpt, featured_image, published_at, created_at')
         .eq('status', 'published')
-        .or(`id.eq.${id},slug.eq.${id}`)
+        .eq(isUuid ? 'id' : 'slug', id)
         .maybeSingle();
 
       if (error || !data) {
@@ -59,7 +64,7 @@ export default function BlogPostPage() {
         .order('published_at', { ascending: false })
         .limit(2);
 
-      setRelated(more || []);
+      setRelated((more || []) as RelatedPost[]);
       setLoading(false);
     }
     load();

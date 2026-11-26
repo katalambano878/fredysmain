@@ -17,7 +17,8 @@ type Summary = {
     other_cost: number;
     labour_cost: number;
     gross_cost: number;
-    gross_profit: number;
+    gross_profit: number | null;
+    price_is_lowest_size?: boolean;
     margin_pct: number | null;
     staff_name: string | null;
   }>;
@@ -246,14 +247,16 @@ export default function FinancePage() {
                       summary.product_margins.map((p) => (
                         <tr key={p.product_id} className="border-t border-gray-100">
                           <td className="py-2 px-3 font-medium text-gray-900">{p.name}</td>
-                          <td className="py-2 px-3 text-right">GH₵ {p.price.toFixed(2)}</td>
+                          <td className="py-2 px-3 text-right whitespace-nowrap">
+                            {p.price > 0 ? `${p.price_is_lowest_size ? 'From ' : ''}GH₵ ${p.price.toFixed(2)}` : 'No price set'}
+                          </td>
                           <td className="py-2 px-3 text-right">GH₵ {p.gross_cost.toFixed(2)}</td>
                           <td
                             className={`py-2 px-3 text-right font-medium ${
-                              p.gross_profit >= 0 ? 'text-emerald-700' : 'text-red-600'
+                              p.gross_profit == null ? 'text-gray-500' : p.gross_profit >= 0 ? 'text-emerald-700' : 'text-red-600'
                             }`}
                           >
-                            GH₵ {p.gross_profit.toFixed(2)}
+                            {p.gross_profit == null ? '\u2013' : `GH₵ ${p.gross_profit.toFixed(2)}`}
                           </td>
                           <td className="py-2 px-3 text-right">
                             {p.margin_pct != null ? `${p.margin_pct.toFixed(1)}%` : '—'}

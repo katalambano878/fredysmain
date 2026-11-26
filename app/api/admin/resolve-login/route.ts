@@ -1,17 +1,19 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
+import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limit';
+import { isPlainPostgres } from '@/lib/db/mode';
+import { signInWithPassword } from '@/lib/db/auth';
 
 /**
- * Resolves a login identifier (email OR phone) to the admin/staff user's email
- * so the client can then call supabase.auth.signInWithPassword({ email, password }).
+ * Sign-in help for the admin login page when staff type a phone number instead of an email.
  *
- * - If the identifier looks like an email, it's returned as-is.
- * - If it's a phone number, we look it up against `profiles.phone` restricted to
- *   users with role in (admin, staff) and return their email.
- * - The endpoint does NOT leak whether an account exists: it always returns
- *   either `{ email }` on success or the same generic failure payload.
+ * - An email is returned as typed (the normal sign-in then checks it).
+ * - A phone number is checked together with the password, here on the server, and a session
+ *   comes back only when both are right. This route used to hand back the staff member's
+ *   email address for any phone number that matched, to anyone who asked.
+ * - Every failure reads the same, so it does not reveal which phone numbers belong to staff.
  */
+const WRONG = 'That phone number or password is not right. Try again, or sign in with your email.';
 export async function POST(req: Request) {
     try {
         const clientId = getClientIdentifier(req);
@@ -28,6 +30,7 @@ export async function POST(req: Request) {
 
         const body = await req.json().catch(() => null);
         const identifier: string = (body?.identifier || '').toString().trim();
+        const password: string = typeof body?.password === 'string' ? body.password : '';
 
         if (!identifier) {
             return NextResponse.json({ error: 'Identifier is required' }, { status: 400 });
@@ -63,14 +66,23 @@ export async function POST(req: Request) {
         }
 
         const match = data?.[0];
+
+        if (!isPlainPostgres()) {
+            // Without the in-house sign-in there is no way to check the password here.
+            return NextResponse.json({ error: 'Sign in with your email address.' }, { status: 400 });
+        }
+        if (!password) {
+            return NextResponse.json({ error: 'Enter your password.' }, { status: 400 });
+        }
         if (!match?.email) {
-            return NextResponse.json(
-                { error: 'No admin account found with that phone. Use your email to sign in.' },
-                { status: 404 }
-            );
+            return NextResponse.json({ error: WRONG }, { status: 401 });
         }
 
-        return NextResponse.json({ email: match.email });
+        const { session, error: signInError } = await signInWithPassword(match.email, password);
+        if (signInError || !session) {
+            return NextResponse.json({ error: WRONG }, { status: 401 });
+        }
+        return NextResponse.json({ session });
     } catch (err: any) {
         console.error('[Admin Resolve] Error:', err?.message);
         return NextResponse.json({ error: 'Internal error' }, { status: 500 });

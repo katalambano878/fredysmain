@@ -31,7 +31,10 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
     const [moq, setMoq] = useState(initialData?.moq || '1');
     const [lowStockThreshold, setLowStockThreshold] = useState(initialData?.metadata?.low_stock_threshold || '3');
     const [description, setDescription] = useState(initialData?.description || '');
-    const [status, setStatus] = useState(initialData?.status || 'Active');
+    // Stored in lowercase, exactly as the database holds it, so an archived or draft product shows as such.
+    const [status, setStatus] = useState(String(initialData?.status || 'active').toLowerCase());
+    // The product's id once it exists. After a first successful create, a retry updates it instead of creating a second copy.
+    const [savedId, setSavedId] = useState<string | null>(initialData?.id || null);
     const [featured, setFeatured] = useState(initialData?.featured || false);
     // Target audience: 'male' (boys), 'female' (girls) or 'unisex'. Defaults to unisex.
     const [gender, setGender] = useState<'male' | 'female' | 'unisex'>(
@@ -254,6 +257,8 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
     const [seoTitle, setSeoTitle] = useState(initialData?.seo_title || '');
     const [metaDescription, setMetaDescription] = useState(initialData?.seo_description || '');
     const [urlSlug, setUrlSlug] = useState(initialData?.slug || '');
+    // The slug follows the product name until someone types in the slug box (or the product already has one).
+    const [slugEdited, setSlugEdited] = useState(!!initialData?.slug);
     const [keywords, setKeywords] = useState(initialData?.tags?.join(', ') || '');
     // Track manual edits so auto-generation doesn't overwrite user changes
     const [seoTitleEdited, setSeoTitleEdited] = useState(!!initialData?.seo_title);
@@ -327,9 +332,10 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
             categoryName,
             siteName: "Freby's Fashion GH",
         });
-        if (!seoTitleEdited && !seoTitle.trim()) setSeoTitle(seo.seo_title);
-        if (!metaDescEdited && !metaDescription.trim()) setMetaDescription(seo.seo_description);
-        if (!keywordsEdited && !keywords.trim()) setKeywords(seo.tags.join(', '));
+        // Keep following the name until the admin types their own. (These used to freeze after the first letter.)
+        if (!seoTitleEdited) setSeoTitle(seo.seo_title);
+        if (!metaDescEdited) setMetaDescription(seo.seo_description);
+        if (!keywordsEdited) setKeywords(seo.tags.join(', '));
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [productName, description, categoryName]);
 
@@ -342,19 +348,15 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
         { id: 'seo', label: 'SEO', icon: 'ri-search-line' }
     ];
 
-    // Fetch categories on mount
+    // Fetch categories on mount. A product being edited keeps whatever category it has, including none:
+    // it is never quietly moved into the first category in the list.
     useEffect(() => {
         async function fetchCategories() {
-            const { data } = await supabase.from('categories').select('id, name').eq('status', 'active');
-            if (data) {
-                setCategories(data);
-                if (data.length > 0 && !categoryId) {
-                    setCategoryId(data[0].id);
-                }
-            }
+            const { data } = await supabase.from('categories').select('id, name').eq('status', 'active').order('name', { ascending: true });
+            if (data) setCategories(data);
         }
         fetchCategories();
-    }, [categoryId]);
+    }, []);
 
     useEffect(() => {
         async function fetchProductionStaff() {
@@ -373,10 +375,10 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
 
     // Auto-generate slug from name if not manually edited
     useEffect(() => {
-        if (!isEditMode && productName && !urlSlug) {
+        if (!isEditMode && !slugEdited) {
             setUrlSlug(productName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, ''));
         }
-    }, [productName, isEditMode, urlSlug]);
+    }, [productName, isEditMode, slugEdited]);
 
     // Auto-generate SKU for new products
     useEffect(() => {
@@ -411,7 +413,8 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
             // Phone camera JPEGs are often 8–15MB — resize on device first, then allow larger originals.
             const MAX_IMAGE_RAW = 40 * 1024 * 1024;
             const MAX_IMAGE_AFTER = 8 * 1024 * 1024;
-            const MAX_VIDEO = 100 * 1024 * 1024;
+            // The upload service accepts files up to 40MB.
+            const MAX_VIDEO = 40 * 1024 * 1024;
             const UPLOAD_TIMEOUT_MS = 90_000;
 
             for (let i = 0; i < files.length; i++) {
@@ -421,7 +424,7 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
 
                 if (isVideo) {
                     if (file.size > MAX_VIDEO) {
-                        alert(`"${file.name}" is too large. Max: 100MB for videos`);
+                        alert(`"${file.name}" is too large. Videos can be up to 40MB.`);
                         setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true } : p));
                         continue;
                     }
@@ -548,6 +551,18 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
     // Variant helpers removed — variants are now auto-generated from selectedColors × selectedSizes
 
     const handleSubmit = async () => {
+        if (loading) return;
+        if (!productName.trim()) {
+            setActiveTab('general');
+            alert('Give the product a name before saving.');
+            return;
+        }
+        // A new product must be filed somewhere. (An older product with no category can still be saved as it is.)
+        if (!savedId && !categoryId) {
+            setActiveTab('general');
+            alert('Choose a category before creating the product.');
+            return;
+        }
         try {
             setLoading(true);
 
@@ -618,9 +633,9 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                 per_variant_costs: perVariantPayload,
             };
 
-            let productId = initialData?.id;
+            let productId = savedId;
 
-            if (isEditMode && productId) {
+            if (productId) {
                 // Update via API (service role — bypasses RLS)
                 const res = await fetch(`/api/admin/products/${productId}`, {
                     method: 'PUT',
@@ -641,6 +656,8 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.error || 'Failed to create product');
                 productId = data.id;
+                // From here on a retry (say the photos failed to save) updates this product.
+                setSavedId(data.id || null);
             }
 
             // Save images via API
@@ -819,9 +836,9 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                         onChange={(e) => setStatus(e.target.value)}
                                         className="w-full px-4 py-3 pr-8 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-600 focus:border-gray-600 cursor-pointer"
                                     >
-                                        <option>Active</option>
-                                        <option>Draft</option>
-                                        <option>Archived</option>
+                                        <option value="active">Active</option>
+                                        <option value="draft">Draft</option>
+                                        <option value="archived">Archived</option>
                                     </select>
                                 </div>
                             </div>
@@ -1617,7 +1634,7 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                 <p className="text-sm text-blue-800">
                                     Tap <strong>Choose from Gallery</strong> → your Files app opens → tap <strong>Select</strong> (top-right) → tap all the photos you want → tap <strong>Open</strong>. All selected photos upload at once.
                                 </p>
-                                <p className="text-xs text-blue-700 mt-1">Images: JPG, PNG, WebP, HEIC (phone photos auto-resized) · Videos: MP4, MOV, WebM (max 100MB each)</p>
+                                <p className="text-xs text-blue-700 mt-1">Images: JPG, PNG, WebP, HEIC (phone photos auto-resized) · Videos: MP4, MOV, WebM (max 40MB each)</p>
                             </div>
                         </div>
                     )}
@@ -2228,12 +2245,18 @@ export default function ProductForm({ initialData, isEditMode = false }: Product
                                     <input
                                         type="text"
                                         value={urlSlug}
-                                        onChange={(e) => setUrlSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/(^-|-$)+/g, ''))}
+                                        onChange={(e) => {
+                                            setSlugEdited(true);
+                                            // Hyphens can be typed; stray ones at the ends are tidied when you leave the box.
+                                            setUrlSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/-{2,}/g, '-'));
+                                        }}
+                                        onBlur={() => setUrlSlug((current: string) => current.replace(/(^-+|-+$)/g, ''))}
+                                        aria-label="URL slug"
                                         className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-r-lg focus:ring-2 focus:ring-gray-600 focus:border-gray-600"
                                         placeholder="product-slug"
                                     />
                                 </div>
-                                <p className="text-xs text-gray-400 mt-1">Only lowercase letters, numbers and hyphens. Auto-sanitised as you type.</p>
+                                <p className="text-xs text-gray-600 mt-1">Lowercase letters, numbers and hyphens only. It follows the product name until you change it here.</p>
                             </div>
 
                             <div>

@@ -1,3 +1,4 @@
+import { findOutOfStock } from '@/lib/order-stock';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const { orderId, customerEmail, redirectUrl } = body;
+        const { orderId, customerEmail } = body;
 
         if (!orderId || typeof orderId !== 'string') {
             return NextResponse.json({ success: false, message: 'Missing or invalid orderId' }, { status: 400 });
@@ -68,28 +69,14 @@ export async function POST(req: Request) {
         try {
             const { data: orderItems, error: itemsError } = await supabaseAdmin
                 .from('order_items')
-                .select('quantity, product_id, is_preorder, metadata, products(name, quantity, status)')
+                .select('quantity, product_id, product_name, variant_name, variant_id, is_preorder, metadata')
                 .eq('order_id', order.id);
 
             if (itemsError) {
                 console.warn('[Payment] Stock check query failed (non-blocking):', itemsError.message);
             } else if (orderItems && orderItems.length > 0) {
-                const outOfStock: string[] = [];
-                for (const item of orderItems) {
-                    const product = (item as any).products;
-                    if (!product) continue;
-                    const isPreorder = (item as any).is_preorder === true || (item as any).metadata?.is_preorder === true;
-                    if (isPreorder) continue; // Preorder items bypass stock validation
-                    if (product.status && product.status !== 'active') {
-                        outOfStock.push(`${product.name} is no longer available`);
-                    } else if (product.quantity < item.quantity) {
-                        outOfStock.push(
-                            product.quantity === 0
-                                ? `${product.name} is out of stock`
-                                : `${product.name} — only ${product.quantity} left (you ordered ${item.quantity})`
-                        );
-                    }
-                }
+                // Counted on the size that was ordered, not on the product row.
+                const outOfStock = await findOutOfStock(orderItems as any[]);
                 if (outOfStock.length > 0) {
                     console.log('[Payment] Blocked — out of stock items:', outOfStock);
                     return NextResponse.json({
@@ -117,12 +104,8 @@ export async function POST(req: Request) {
             String(customerEmail || order.email || '').trim().toLowerCase()
         );
         const defaultRedirectUrl = `${baseUrl}/order-success?order=${encodeURIComponent(orderRef)}&payment_success=true${successEmail ? `&email=${successEmail}` : ''}`;
-        const allowedPrefixes = ['https://'];
-        const safeRedirectUrl =
-            typeof redirectUrl === 'string' &&
-                allowedPrefixes.some((prefix) => redirectUrl.startsWith(prefix))
-                ? redirectUrl
-                : defaultRedirectUrl;
+        // The return address is always this shop. A caller-supplied address could send shoppers anywhere.
+        const safeRedirectUrl = defaultRedirectUrl;
 
         // Generate a unique external reference for Moolre
         const uniqueRef = `${orderRef}-R${Date.now()}`;

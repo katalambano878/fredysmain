@@ -101,6 +101,7 @@ export const FK_MAP: Record<string, FkEdge[]> = {
   ],
   reviews: [
     { column: "product_id", foreignTable: "products", foreignColumn: "id" },
+    { column: "user_id", foreignTable: "profiles", foreignColumn: "id" },
   ],
   riders: [
     { column: "zone_id", foreignTable: "delivery_zones", foreignColumn: "id" },

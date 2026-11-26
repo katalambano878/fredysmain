@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { fetchWithTimeout, withTimeout } from '@/lib/fetch-timeout';
 import { canAccessPath, firstAllowedAdminPath } from '@/lib/admin-permissions';
+import { SmsCreditDashboardCard } from '@/components/admin/SmsCreditDashboardCard';
 
 export default function AdminLayout({
   children,
@@ -296,11 +297,12 @@ export default function AdminLayout({
     {
       title: 'Buy SMS',
       icon: 'ri-message-2-line',
-      path: '/admin/sms-credit'
+      path: '/admin/sms-credit',
+      permissionKey: 'sms_credit'
     },
     {
       title: 'Sales',
-      icon: 'ri-store-3-line',
+      icon: 'ri-receipt-line',
       path: '/admin/sales',
       permissionKey: 'pos'
     },
@@ -450,6 +452,10 @@ export default function AdminLayout({
   const visibleMenuItems = menuItems.filter(item => {
     if (item.moduleId && !enabledModules.includes(item.moduleId)) return false;
     if (userRole === 'admin') return true;
+    // Roles are for administrators only. Staff accounts open for administrators and for the one
+    // person allowed to remove staff; the pages refuse everyone else, so the menu hides them too.
+    if (item.path === '/admin/roles') return false;
+    if (item.path === '/admin/staff') return rolePermissions.delete_staff === true;
     // Staff: fail closed — only show explicitly granted permissions
     if (item.permissionKey) {
       if (rolePermissions[item.permissionKey] === true) return true;
@@ -459,6 +465,32 @@ export default function AdminLayout({
     }
     return false;
   });
+
+  // Sidebar sections, in display order. An item not listed here still shows, under "More".
+  const menuSections: { title: string; paths: string[] }[] = [
+    { title: 'Overview', paths: ['/admin', '/admin/end-of-day', '/admin/analytics', '/admin/finance'] },
+    {
+      title: 'Selling',
+      paths: ['/admin/orders', '/admin/pos', '/admin/sales', '/admin/preorders', '/admin/gallery-preorders', '/admin/delivery'],
+    },
+    {
+      title: 'Products',
+      paths: ['/admin/products', '/admin/categories', '/admin/inventory', '/admin/discounts', '/admin/coupons', '/admin/homepage-gallery'],
+    },
+    { title: 'Customers', paths: ['/admin/customers', '/admin/reviews', '/admin/support', '/admin/customer-insights'] },
+    { title: 'Messages & content', paths: ['/admin/sms-credit', '/admin/notifications', '/admin/test-sms', '/admin/blog'] },
+    { title: 'Team & setup', paths: ['/admin/staff', '/admin/production-team', '/admin/roles', '/admin/modules'] },
+  ];
+  const sectionedPaths = new Set(menuSections.flatMap((section) => section.paths));
+  const visibleSections = [
+    ...menuSections.map((section) => ({
+      title: section.title,
+      items: section.paths
+        .map((path) => visibleMenuItems.find((item) => item.path === path))
+        .filter((item): item is (typeof visibleMenuItems)[number] => Boolean(item)),
+    })),
+    { title: 'More', items: visibleMenuItems.filter((item) => !sectionedPaths.has(item.path)) },
+  ].filter((section) => section.items.length > 0);
 
   // POS gets a full-screen layout with no sidebar or header
   const isPOS = pathname === '/admin/pos';
@@ -497,31 +529,41 @@ export default function AdminLayout({
             <span className="ml-3 text-sm font-semibold text-gray-500">ADMIN</span>
           </Link>
 
-          <nav className="space-y-1">
-            {visibleMenuItems.map((item) => {
-              const isActive = item.exact ? pathname === item.path : pathname.startsWith(item.path);
-              return (
-                <Link
-                  key={item.path}
-                  href={item.path}
-                  onClick={() => window.innerWidth < 1024 && setIsSidebarOpen(false)}
-                  className={`flex items-center justify-between px-4 py-3 rounded-lg transition-colors cursor-pointer ${isActive
-                    ? 'bg-gray-50 text-gray-900 font-semibold'
-                    : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                >
-                  <div className="flex items-center space-x-3">
-                    <i className={`${item.icon} text-xl w-5 h-5 flex items-center justify-center`}></i>
-                    <span>{item.title}</span>
-                  </div>
-                  {item.badge && (
-                    <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded-full">
-                      {item.badge}
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
+          <nav aria-label="Admin" className="space-y-5">
+            {visibleSections.map((section) => (
+              <div key={section.title}>
+                <h2 className="px-4 pb-1.5 text-xs font-semibold text-gray-500">{section.title}</h2>
+                <div className="space-y-0.5">
+                  {section.items.map((item) => {
+                    const isActive = item.exact
+                      ? pathname === item.path
+                      : pathname === item.path || pathname.startsWith(`${item.path}/`);
+                    return (
+                      <Link
+                        key={item.path}
+                        href={item.path}
+                        aria-current={isActive ? 'page' : undefined}
+                        onClick={() => window.innerWidth < 1024 && setIsSidebarOpen(false)}
+                        className={`flex items-center justify-between px-4 py-2.5 rounded-lg transition-colors cursor-pointer ${isActive
+                          ? 'bg-gray-100 text-gray-900 font-semibold'
+                          : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <i className={`${item.icon} text-xl w-5 h-5 flex items-center justify-center`} aria-hidden></i>
+                          <span>{item.title}</span>
+                        </div>
+                        {item.badge && (
+                          <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded-full">
+                            {item.badge}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
 
           <div className="mt-8 pt-8 border-t border-gray-200 space-y-1">
@@ -558,10 +600,6 @@ export default function AdminLayout({
             </button>
 
             <div className="flex items-center space-x-2 lg:space-x-4">
-              <button className="relative w-10 h-10 flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer">
-                <i className="ri-notification-3-line text-xl"></i>
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-              </button>
 
               <div className="relative user-menu-container">
                 <button
@@ -594,6 +632,7 @@ export default function AdminLayout({
           </div>
         </header>
 
+        <SmsCreditDashboardCard />
         <main className="p-4 lg:p-6">
           {children}
         </main>

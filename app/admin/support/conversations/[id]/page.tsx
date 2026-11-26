@@ -37,7 +37,7 @@ export default function ConversationDetailPage({ params }: { params: Promise<{ i
   async function addMemoryNote() {
     if (!newMemory.trim()) return;
     setAddingMemory(true);
-    await supabase.from('ai_memory').insert({
+    const { error: memoryError } = await supabase.from('ai_memory').insert({
       customer_id: conversation?.user_id || null,
       customer_email: conversation?.customer_email || null,
       memory_type: memoryType,
@@ -45,19 +45,31 @@ export default function ConversationDetailPage({ params }: { params: Promise<{ i
       importance: 'normal',
       source_conversation_id: id,
     });
+    setAddingMemory(false);
+    if (memoryError) {
+      alert('The note was not saved. Try again.');
+      return;
+    }
     setNewMemory('');
     await fetchData();
-    setAddingMemory(false);
   }
 
   async function deleteMemory(memId: string) {
-    await supabase.from('ai_memory').delete().eq('id', memId);
+    const { error: deleteError } = await supabase.from('ai_memory').delete().eq('id', memId);
+    if (deleteError) {
+      alert('The note was not deleted. Try again.');
+      return;
+    }
     setMemories(prev => prev.filter(m => m.id !== memId));
   }
 
   async function toggleResolved() {
     const newVal = !conversation.is_resolved;
-    await supabase.from('chat_conversations').update({ is_resolved: newVal }).eq('id', id);
+    const { error: resolveError } = await supabase.from('chat_conversations').update({ is_resolved: newVal }).eq('id', id);
+    if (resolveError) {
+      alert('That change was not saved. Try again.');
+      return;
+    }
     setConversation({ ...conversation, is_resolved: newVal });
   }
 
@@ -77,11 +89,14 @@ export default function ConversationDetailPage({ params }: { params: Promise<{ i
         channel: 'chat',
         priority: conversation.sentiment === 'negative' ? 'high' : 'medium',
         initial_message: conversation.summary || 'Created from AI chat conversation',
-        message_sender_type: 'system',
       }),
-    });
-    const data = await res.json();
+    }).catch(() => null);
+    const data = res ? await res.json().catch(() => ({})) : {};
     setCreatingTicket(false);
+    if (!res || !res.ok) {
+      alert(data?.error || 'The ticket was not created. Try again.');
+      return;
+    }
     if (data.data) {
       await supabase.from('chat_conversations').update({ is_escalated: true, escalated_at: new Date().toISOString() }).eq('id', id);
       setConversation({ ...conversation, is_escalated: true });

@@ -1,3 +1,4 @@
+import { referenceBelongsToOrder } from '@/lib/payment-refs';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { sendOrderConfirmation } from '@/lib/notifications';
@@ -38,10 +39,6 @@ export async function POST(req: Request) {
                 ? externalRef
                 : null;
 
-        if (normalizedExternalRef && !normalizedExternalRef.startsWith(orderNumber)) {
-            return NextResponse.json({ success: false, message: 'Invalid external reference for order' }, { status: 400 });
-        }
-
         console.log('[Verify] Checking payment for:', orderNumber);
 
         const { data: order, error: fetchError } = await supabaseAdmin
@@ -53,6 +50,10 @@ export async function POST(req: Request) {
         if (fetchError || !order) {
             console.error('[Verify] Order not found:', orderNumber);
             return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
+        }
+
+        if (normalizedExternalRef && !(await referenceBelongsToOrder(normalizedExternalRef, order))) {
+            return NextResponse.json({ success: false, message: 'Invalid external reference for order' }, { status: 400 });
         }
 
         if (order.payment_status === 'paid') {
@@ -96,17 +97,18 @@ export async function POST(req: Request) {
             });
 
             const checkResult = await checkResponse.json();
-            console.log('[Verify] Moolre API response:', JSON.stringify(checkResult));
+            console.log('[Verify] Moolre status for', orderNumber, ':', String(checkResult?.data?.status || checkResult?.status || 'unknown'));
 
             const statusStr = String(checkResult.data?.status || '').toLowerCase();
             moolreApiVerified =
                 (checkResult.status === 1 && checkResult.data) &&
                 (statusStr === 'success' || statusStr === 'successful' || statusStr === 'completed' || statusStr === 'paid');
 
-            if (moolreApiVerified && checkResult.data?.amount) {
-                const paidAmount = parseFloat(checkResult.data.amount);
+            if (moolreApiVerified) {
+                // No amount in the reply counts as a mismatch: an unpriced "success" must not settle an order.
+                const paidAmount = parseFloat(checkResult.data?.amount);
                 const expectedAmount = Number(order.total);
-                if (Math.abs(paidAmount - expectedAmount) > 0.01) {
+                if (!Number.isFinite(paidAmount) || Math.abs(paidAmount - expectedAmount) > 0.01) {
                     console.error('[Verify] AMOUNT MISMATCH! Expected:', expectedAmount, 'Got:', paidAmount);
                     moolreApiVerified = false;
                 }

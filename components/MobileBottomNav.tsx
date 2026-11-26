@@ -105,7 +105,7 @@ export default function MobileBottomNav() {
                   key={item.href}
                   href={item.href}
                   className={`flex flex-col items-center justify-center py-2 transition-all duration-200 relative group active:scale-90 ${
-                    active ? 'text-gray-900' : 'text-gray-400'
+                    active ? 'text-gray-900' : 'text-gray-600'
                   }`}
                   aria-label={item.label}
                   aria-current={active ? 'page' : undefined}
@@ -130,9 +130,7 @@ export default function MobileBottomNav() {
                     )}
                   </div>
                   
-                  <span className={`text-[10px] font-semibold mt-0.5 transition-all duration-200 ${
-                    active ? 'opacity-100' : 'opacity-70'
-                  }`}>
+                  <span className="text-[11px] font-semibold mt-0.5">
                     {item.label}
                   </span>
                 </Link>

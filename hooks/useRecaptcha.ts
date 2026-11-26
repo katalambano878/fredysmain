@@ -30,11 +30,10 @@ export function useRecaptcha() {
 
         setVerifying(true);
         try {
-            const token = await executeRecaptcha(action);
-            if (!token) {
-                setError('Could not get reCAPTCHA token. Please try again.');
-                return false;
-            }
+            // No token means Google's script is blocked, slow or failed to load (ad blockers,
+            // poor networks). That is not the shopper's fault, so they are let through.
+            const token = await executeRecaptcha(action).catch(() => null);
+            if (!token) return true;
 
             // Verify on server side
             const response = await fetch('/api/recaptcha/verify', {
@@ -43,8 +42,9 @@ export function useRecaptcha() {
                 body: JSON.stringify({ token, action }),
             });
 
-            const result = await response.json();
-            if (!result.success) {
+            // Only a clear "no" from our server stops the shopper. A failed or unreadable check does not.
+            const result = await response.json().catch(() => null);
+            if (response.ok && result && result.success === false) {
                 setError(result.error || 'Verification failed. Please try again.');
                 return false;
             }
@@ -52,8 +52,7 @@ export function useRecaptcha() {
             return true;
         } catch (err: any) {
             console.error('[reCAPTCHA] Hook error:', err);
-            setError('Verification error. Please try again.');
-            return false;
+            return true;
         } finally {
             setVerifying(false);
         }

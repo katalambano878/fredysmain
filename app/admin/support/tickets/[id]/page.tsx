@@ -17,16 +17,22 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
   const [isInternal, setIsInternal] = useState(false);
   const [sending, setSending] = useState(false);
   const [conversation, setConversation] = useState<any>(null);
+  const [notice, setNotice] = useState('');
+  const [assignedTo, setAssignedTo] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const fetchTicket = useCallback(async () => {
     setLoading(true);
     const [ticketRes, msgsRes] = await Promise.all([
       supabase.from('support_tickets').select('*').eq('id', id).single(),
-      fetch(`/api/support/tickets/${id}/messages`).then(r => r.json()),
+      fetch(`/api/support/tickets/${id}/messages`)
+        .then(async (r) => ({ ok: r.ok, json: await r.json().catch(() => ({})) }))
+        .catch(() => ({ ok: false, json: {} as any })),
     ]);
     setTicket(ticketRes.data);
-    setMessages(msgsRes.data || []);
+    setAssignedTo(ticketRes.data?.assigned_to || '');
+    setMessages(msgsRes.json?.data || []);
+    if (!msgsRes.ok) setNotice(msgsRes.json?.error || 'The notes on this ticket could not load. Refresh to try again.');
 
     if (ticketRes.data?.conversation_id) {
       const { data: conv } = await supabase.from('chat_conversations').select('id, session_id, messages, summary, sentiment, customer_name').eq('id', ticketRes.data.conversation_id).single();
@@ -45,24 +51,48 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
     e.preventDefault();
     if (!reply.trim()) return;
     setSending(true);
-    await fetch(`/api/support/tickets/${id}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: reply, sender_type: 'agent', sender_name: 'Admin', is_internal: isInternal }),
-    });
-    setReply('');
-    setIsInternal(false);
-    await fetchTicket();
-    setSending(false);
+    setNotice('');
+    try {
+      const res = await fetch(`/api/support/tickets/${id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: reply, is_internal: isInternal }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        // Keep what was typed so it can be sent again.
+        setNotice(json?.error || 'The note was not saved. Try again.');
+        return;
+      }
+      setReply('');
+      setIsInternal(false);
+      await fetchTicket();
+    } catch {
+      setNotice('The note was not saved. Check your connection and try again.');
+    } finally {
+      setSending(false);
+    }
   }
 
   async function updateTicket(updates: any) {
-    await fetch('/api/support/tickets', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, ...updates }),
-    });
-    setTicket((prev: any) => ({ ...prev, ...updates }));
+    setNotice('');
+    try {
+      const res = await fetch('/api/support/tickets', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...updates }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        setNotice(json?.error || 'That change was not saved. Try again.');
+        return false;
+      }
+      setTicket((prev: any) => ({ ...prev, ...updates }));
+      return true;
+    } catch {
+      setNotice('That change was not saved. Check your connection and try again.');
+      return false;
+    }
   }
 
   async function addResolution() {
@@ -173,17 +203,24 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
 
             {/* Reply Form */}
             <form onSubmit={sendMessage} className="border-t border-gray-100 p-4 space-y-3">
-              <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={3} placeholder={isInternal ? 'Add an internal note (not visible to customer)...' : 'Type your reply...'}
+              <p className="text-xs text-gray-600">
+                Internal note: the customer is not messaged from here. Call, text or email them yourself, then record what was said.
+              </p>
+              {notice && (
+                <p role="alert" className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{notice}</p>
+              )}
+              <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={3} aria-label="Note" placeholder="Write a note for the team..."
+
                 className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 resize-none ${isInternal ? 'border-amber-200 bg-amber-50 focus:ring-amber-400' : 'border-gray-200 focus:ring-gray-600'}`} />
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
                   <input type="checkbox" checked={isInternal} onChange={(e) => setIsInternal(e.target.checked)}
                     className="rounded border-gray-300 text-amber-600 focus:ring-amber-500" />
-                  Internal note
+                  Private (hide from the shared ticket history)
                 </label>
                 <button type="submit" disabled={sending || !reply.trim()}
                   className="px-4 py-2 text-xs font-medium bg-gray-700 text-white rounded-lg hover:bg-gray-900 disabled:opacity-40 transition-colors">
-                  {sending ? 'Sending...' : isInternal ? 'Add Note' : 'Send Reply'}
+                  {sending ? 'Saving...' : 'Add note'}
                 </button>
               </div>
             </form>
@@ -211,7 +248,16 @@ export default function TicketDetailPage({ params }: { params: Promise<{ id: str
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Assigned To</label>
-              <input value={ticket.assigned_to || ''} onChange={(e) => updateTicket({ assigned_to: e.target.value })} placeholder="Agent name or email"
+              <input
+                value={assignedTo}
+                onChange={(e) => setAssignedTo(e.target.value)}
+                onBlur={() => {
+                  if (assignedTo.trim() !== (ticket.assigned_to || '')) updateTicket({ assigned_to: assignedTo.trim() || null });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                }}
+                placeholder="Agent name or email"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-600" />
             </div>
           </div>

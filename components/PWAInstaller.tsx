@@ -68,8 +68,20 @@ export default function PWAInstaller() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
     window.addEventListener('appinstalled', handleInstalled);
 
+    // In development the script files keep the same names between edits, so a service worker
+    // that caches them serves old code. Run it on the live site only, and clear one left behind.
+    const isLiveSite = process.env.NODE_ENV === 'production';
+    if (!isLiveSite && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        registrations.forEach((registration) => registration.unregister());
+      });
+      if ('caches' in window) {
+        caches.keys().then((keys) => keys.forEach((key) => caches.delete(key)));
+      }
+    }
+
     // Register service worker with update detection
-    if ('serviceWorker' in navigator) {
+    if (isLiveSite && 'serviceWorker' in navigator) {
       navigator.serviceWorker
         .register('/service-worker.js', { scope: '/' })
         .then((registration) => {

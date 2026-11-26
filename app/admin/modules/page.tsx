@@ -27,6 +27,7 @@ const colorMap: Record<string, string> = {
 
 export default function ModulesPage() {
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   // Base definitions of modules
   const [modules, setModules] = useState<Module[]>([
@@ -38,24 +39,6 @@ export default function ModulesPage() {
       color: 'red',
       enabled: false,
       category: 'Marketing'
-    },
-    {
-      id: 'cms',
-      name: 'CMS / Pages',
-      description: 'Manage website content, policies, and landing pages',
-      icon: 'ri-file-list-line',
-      color: 'blue',
-      enabled: false,
-      category: 'Content'
-    },
-    {
-      id: 'homepage',
-      name: 'Homepage Config',
-      description: 'Customize homepage sections and banners',
-      icon: 'ri-home-gear-line',
-      color: 'purple',
-      enabled: false,
-      category: 'Content'
     },
     {
       id: 'blog',
@@ -83,33 +66,6 @@ export default function ModulesPage() {
       color: 'gray',
       enabled: false,
       category: 'Support'
-    },
-    {
-      id: 'flash-sales',
-      name: 'Flash Sales',
-      description: 'Time-limited promotional sales with countdown timers',
-      icon: 'ri-flashlight-line',
-      color: 'amber',
-      enabled: false,
-      category: 'Marketing'
-    },
-    {
-      id: 'loyalty-program',
-      name: 'Loyalty Program',
-      description: 'Points and rewards system for customer retention',
-      icon: 'ri-trophy-line',
-      color: 'yellow',
-      enabled: false,
-      category: 'Marketing'
-    },
-    {
-      id: 'pwa-settings',
-      name: 'PWA / Mobile App',
-      description: 'Configure Progressive Web App settings',
-      icon: 'ri-smartphone-line',
-      color: 'indigo',
-      enabled: false,
-      category: 'Mobile'
     },
     {
       id: 'maintenance-mode',
@@ -140,8 +96,10 @@ export default function ModulesPage() {
           return dbState ? { ...m, enabled: dbState.enabled } : m;
         }));
       }
+      setLoadError('');
     } catch (err) {
       console.error('Error fetching modules:', err);
+      setLoadError('The current settings could not load, so the switches below may not show what is really on. Refresh the page.');
     } finally {
       setLoading(false);
     }
@@ -149,6 +107,11 @@ export default function ModulesPage() {
 
   const toggleModule = async (id: string, currentState: boolean) => {
     const newState = !currentState;
+
+    // Maintenance mode closes the shop to customers, so make sure it is meant.
+    if (id === 'maintenance-mode' && newState) {
+      if (!confirm('Turn on maintenance mode? Customers will see a "back soon" page and cannot shop until you turn it off.')) return;
+    }
 
     // Optimistic Update
     setModules(prev => prev.map(m =>
@@ -183,62 +146,6 @@ export default function ModulesPage() {
 
   const categories = ['all', ...Array.from(new Set(modules.map(m => m.category)))];
 
-  /* Lock Screen Logic */
-  const [isLocked, setIsLocked] = useState(true);
-  const [pin, setPin] = useState('');
-  const [pinError, setPinError] = useState('');
-
-  const handleUnlock = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (pin === '6526') {
-      setIsLocked(false);
-    } else {
-      setPinError('Incorrect PIN');
-      setPin('');
-    }
-  };
-
-  if (isLocked) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 text-center border border-gray-100">
-          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <i className="ri-lock-2-line text-4xl text-gray-700"></i>
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Restricted Access</h2>
-          <p className="text-gray-500 mb-8">Please enter the security PIN to access Modules.</p>
-
-          <form onSubmit={handleUnlock} className="space-y-4">
-            <div>
-              <input
-                type="password"
-                value={pin}
-                onChange={(e) => {
-                  setPin(e.target.value);
-                  setPinError('');
-                }}
-                className="w-full text-center text-3xl font-bold tracking-widest px-4 py-4 border-2 border-gray-200 rounded-xl focus:border-gray-600 focus:ring-4 focus:ring-gray-600/10 outline-none transition-all"
-                placeholder="• • • •"
-                maxLength={4}
-                autoFocus
-              />
-            </div>
-            {pinError && (
-              <p className="text-red-500 text-sm font-medium animate-pulse">{pinError}</p>
-            )}
-            <button
-              type="submit"
-              className="w-full bg-gray-900 hover:bg-gray-900 text-white font-bold py-4 rounded-xl transition-colors text-lg"
-            >
-              Unlock Dashboard
-            </button>
-          </form>
-
-        </div>
-      </div>
-    );
-  }
-
   const filteredModules = modules.filter(module => {
     const matchesSearch = module.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       module.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -258,6 +165,9 @@ export default function ModulesPage() {
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Modules & Features</h1>
+        {loadError && (
+          <p role="alert" className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3">{loadError}</p>
+        )}
         <p className="text-gray-600 mb-8">Enable or disable features to customize your admin dashboard.</p>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">

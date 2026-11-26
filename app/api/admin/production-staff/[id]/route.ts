@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireAdminSession, requirePermission } from '@/lib/admin-route-auth';
+import { getAdminActor, requirePermission } from '@/lib/admin-route-auth';
 
 export const dynamic = 'force-dynamic';
 
+/** Editing a production team member is for administrators only. */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const err = await requireAdminSession(request);
-  if (err) return err;
+  const actor = await getAdminActor(request);
+  if (!actor) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (actor.role !== 'admin') {
+    return NextResponse.json({ error: 'Only an administrator can edit production team members.' }, { status: 403 });
+  }
   const { id } = await params;
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
   try {

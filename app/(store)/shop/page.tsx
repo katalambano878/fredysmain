@@ -49,7 +49,9 @@ function ShopContent() {
     const age = searchParams.get('age');
 
     if (category) setSelectedCategory(category);
-    if (sort) setSortBy(sort);
+    // Only sorts the shop really has; an old or mistyped link falls back to newest first.
+    if (sort === 'price-low' || sort === 'price-high') setSortBy(sort);
+    else if (sort) setSortBy('popular');
     if (age) setSelectedAge(age);
   }, [searchParams]);
 
@@ -85,21 +87,10 @@ function ShopContent() {
         setLoadingMore(true);
       }
       try {
-        const fetchSize = selectedAge ? 36 : productsPerPage;
-        const cats = categoriesRef.current;
-
-        let categorySlugs = 'all';
-        if (selectedCategory !== 'all') {
-          const categoryObj = cats.find((c) => c.slug === selectedCategory);
-          if (categoryObj) {
-            const childSlugs = cats
-              .filter((c) => c.parent_id === categoryObj.id)
-              .map((c) => c.slug);
-            categorySlugs = [selectedCategory, ...childSlugs].join(',');
-          } else {
-            categorySlugs = selectedCategory;
-          }
-        }
+        const fetchSize = productsPerPage;
+        // The server adds sub-categories and filters by age, so the first load is right
+        // even before the category list has arrived.
+        const categorySlugs = selectedCategory;
 
         const cacheKey = `shop:${selectedCategory}:${selectedAge}:${searchQuery}:${priceMin}-${priceMax}:${selectedRating}:${sortBy}:${page}`;
         const { data, count, error } = await cachedQuery<{ data: any; count: any; error: any }>(
@@ -115,6 +106,7 @@ function ShopContent() {
               categorySlugs,
             });
             if (searchQuery) qs.set('search', searchQuery);
+            if (selectedAge) qs.set('age', selectedAge);
 
             const res = await fetch(`/api/storefront/shop?${qs.toString()}`, {
               credentials: 'same-origin',
@@ -138,18 +130,7 @@ function ShopContent() {
         if (data) {
           setHasMore(data.length === fetchSize);
 
-          let filtered = data;
-          if (selectedAge) {
-            filtered = data.filter((p: any) => {
-              const variants = p.product_variants || [];
-              return variants.some((v: any) => {
-                const vName = (v.name || v.option1 || '').toLowerCase().trim();
-                const target = selectedAge.toLowerCase().trim();
-                return vName === target && (v.quantity || 0) > 0;
-              });
-            });
-          }
-          const formattedProducts = filtered.map((p: any) => {
+          const formattedProducts = data.map((p: any) => {
             const variants = p.product_variants || [];
             const hasVariants = variants.length > 0;
             const pricedVariants = hasVariants
@@ -194,7 +175,7 @@ function ShopContent() {
               originalPrice,
               image: p.product_images?.[0]?.url || '/frebys-logo.png',
               rating: p.rating_avg || 0,
-              reviewCount: 0,
+              reviewCount: Number(p.review_count) || 0,
               badge: onSale ? 'Sale' : undefined,
               inStock: effectiveStock > 0,
               maxStock: effectiveStock || 50,
@@ -206,13 +187,7 @@ function ShopContent() {
             };
           });
           setProducts((prev) => (page === 1 ? formattedProducts : [...prev, ...formattedProducts]));
-          if (selectedAge) {
-            setTotalProducts((prev) =>
-              page === 1 ? formattedProducts.length : prev + formattedProducts.length
-            );
-          } else {
-            setTotalProducts(count || 0);
-          }
+          setTotalProducts(count || 0);
         }
       } catch (err) {
         console.error('Error fetching products:', err);
@@ -320,9 +295,10 @@ function ShopContent() {
                     <h2 className="text-xl font-bold text-brand-greenDark">Filters</h2>
                     <button
                       onClick={() => setIsFilterOpen(false)}
+                      aria-label="Close filters"
                       className="w-10 h-10 flex items-center justify-center text-brand-greenDark"
                     >
-                      <i className="ri-close-line text-2xl"></i>
+                      <i className="ri-close-line text-2xl" aria-hidden></i>
                     </button>
                   </div>
 
@@ -417,35 +393,6 @@ function ShopContent() {
                       </div>
                     </div>
 
-                    {/* Rating */}
-                    <div className="border-t border-brand-green/20 pt-8">
-                      <h3 className="font-semibold text-brand-greenDark mb-4">Rating</h3>
-                      <div className="space-y-2">
-                        {[4, 3, 2, 1].map(rating => (
-                          <button
-                            key={rating}
-                            onClick={() => {
-                              setSelectedRating(rating === selectedRating ? 0 : rating);
-                              setPage(1);
-                            }}
-                            className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${selectedRating === rating
-                              ? 'bg-brand-greenLight text-brand-greenDark'
-                              : 'text-gray-700 hover:bg-gray-100'
-                              }`}
-                          >
-                            <div className="flex items-center space-x-2">
-                              {[1, 2, 3, 4, 5].map(star => (
-                                <i
-                                  key={star}
-                                  className={`${star <= rating ? 'ri-star-fill text-brand-orange' : 'ri-star-line text-gray-300'} text-sm`}
-                                ></i>
-                              ))}
-                              <span className="text-sm">& Up</span>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
 
                     <button
                       onClick={() => {
@@ -480,11 +427,9 @@ function ShopContent() {
                       }}
                       className="px-4 py-2 pr-8 border border-brand-green/30 rounded-xl focus:ring-2 focus:ring-brand-green focus:border-brand-green text-sm bg-white cursor-pointer"
                     >
-                      <option value="popular">Most Popular</option>
-                      <option value="new">Newest</option>
+                      <option value="popular">Newest first</option>
                       <option value="price-low">Price: Low to High</option>
                       <option value="price-high">Price: High to Low</option>
-                      <option value="rating">Highest Rated</option>
                     </select>
                   </div>
                 </div>

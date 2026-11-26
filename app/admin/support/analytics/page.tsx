@@ -10,17 +10,21 @@ export default function SupportAnalyticsPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(30);
+  const [loadError, setLoadError] = useState('');
 
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
     try {
       const { fetchWithTimeout } = await import('@/lib/fetch-timeout');
       const res = await fetchWithTimeout(`/api/support/analytics?days=${days}`, { timeoutMs: 20_000 });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || `The analytics could not load (${res.status}).`);
       setData(json);
+      setLoadError('');
     } catch (e) {
       console.error('[Support analytics]', e);
       setData(null);
+      setLoadError(e instanceof Error ? e.message : 'The analytics could not load.');
     } finally {
       setLoading(false);
     }
@@ -36,6 +40,20 @@ export default function SupportAnalyticsPage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="bg-white rounded-xl h-40 animate-pulse" />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold text-gray-900">Support Analytics</h1>
+        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
+          <p className="text-sm font-medium text-gray-900">{loadError}</p>
+          <button onClick={fetchAnalytics} className="mt-3 px-4 py-2 text-sm font-semibold border border-gray-300 rounded-lg hover:bg-gray-50">
+            Try again
+          </button>
         </div>
       </div>
     );
@@ -82,8 +100,8 @@ export default function SupportAnalyticsPage() {
           { label: 'Tickets', value: s.totalTickets, icon: 'ri-ticket-line', color: 'text-gray-700 bg-gray-50' },
           { label: 'AI Handled', value: `${aiRate}%`, icon: 'ri-robot-2-line', color: 'text-purple-600 bg-purple-50' },
           { label: 'Escalated', value: `${escalationRate}%`, icon: 'ri-alarm-warning-line', color: 'text-orange-600 bg-orange-50' },
-          { label: 'Avg Rating', value: s.avgRating, icon: 'ri-star-line', color: 'text-amber-600 bg-amber-50' },
-          { label: 'Avg Resolution', value: `${s.avgResolutionHours}h`, icon: 'ri-time-line', color: 'text-cyan-600 bg-cyan-50' },
+          { label: 'Avg Rating', value: s.totalFeedback > 0 ? s.avgRating : '\u2013', icon: 'ri-star-line', color: 'text-amber-600 bg-amber-50' },
+          { label: 'Avg Resolution', value: Number(s.avgResolutionHours) > 0 ? `${s.avgResolutionHours}h` : '\u2013', icon: 'ri-time-line', color: 'text-cyan-600 bg-cyan-50' },
         ].map((kpi) => (
           <div key={kpi.label} className="bg-white rounded-xl border border-gray-100 p-4">
             <div className={`w-9 h-9 rounded-lg ${kpi.color} flex items-center justify-center mb-2`}>
@@ -206,7 +224,7 @@ export default function SupportAnalyticsPage() {
             <p className="text-purple-200 text-xs mt-1">Auto-resolved by AI</p>
           </div>
           <div>
-            <p className="text-3xl font-bold">{s.avgFirstResponseMinutes}m</p>
+            <p className="text-3xl font-bold">{Number(s.avgFirstResponseMinutes) > 0 ? `${s.avgFirstResponseMinutes}m` : '\u2013'}</p>
             <p className="text-purple-200 text-xs mt-1">Avg first response time</p>
           </div>
         </div>

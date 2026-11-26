@@ -31,6 +31,7 @@ export default function RidersPage() {
     const [riders, setRiders] = useState<Rider[]>([]);
     const [zones, setZones] = useState<Zone[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [showModal, setShowModal] = useState(false);
@@ -49,12 +50,17 @@ export default function RidersPage() {
                 fetch('/api/delivery/riders'),
                 fetch('/api/delivery/zones'),
             ]);
+            for (const res of [ridersRes, zonesRes]) {
+                if (!res.ok) throw new Error(res.status === 401 ? 'Your session has expired. Sign in again.' : 'The delivery data could not load.');
+            }
             const ridersData = await ridersRes.json();
             const zonesData = await zonesRes.json();
             setRiders(ridersData.riders || []);
             setZones(zonesData.zones || []);
+            setLoadError('');
         } catch (err) {
             console.error('Failed to fetch:', err);
+            setLoadError(err instanceof Error ? err.message : 'The delivery data could not load.');
         } finally {
             setLoading(false);
         }
@@ -121,11 +127,12 @@ export default function RidersPage() {
     }
 
     async function handleDelete(rider: Rider) {
-        if (!confirm(`Delete rider "${rider.full_name}"? This cannot be undone.`)) return;
+        if (!confirm(`Remove rider "${rider.full_name}"? A rider with past deliveries is set to inactive instead, so their delivery history is kept.`)) return;
         try {
             const res = await fetch(`/api/delivery/riders?id=${rider.id}`, { method: 'DELETE' });
-            if (!res.ok) throw new Error((await res.json()).error);
-            showToast('Rider removed');
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(json.error || 'The rider was not removed');
+            showToast(json.deactivated ? `${rider.full_name} has past deliveries, so they were set to inactive.` : 'Rider removed');
             fetchData();
         } catch (err: any) {
             showToast(`Error: ${err.message}`);
@@ -161,6 +168,11 @@ export default function RidersPage() {
             </div>
 
             <DeliveryNav />
+            {loadError && (
+                <p role="alert" className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                    {loadError} The figures below may be out of date or empty.
+                </p>
+            )}
 
             {loading ? (
                 <div className="flex items-center justify-center py-20">

@@ -19,8 +19,12 @@ export async function GET(request: Request) {
       .from('orders')
       .select('id, order_number, email, phone, total, shipping_address, metadata')
       .neq('payment_status', 'paid')
+      // Only orders still waiting: a cancelled order must not be chased for money.
+      .in('status', ['pending', 'awaiting_payment'])
       .eq('payment_reminder_sent', false)
       .lt('created_at', fifteenMinutesAgo)
+      // Not older than two days: nobody wants a reminder for a basket from last month.
+      .gt('created_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
       .order('created_at', { ascending: true })
       .limit(50); // Process max 50 at a time to avoid timeout
 

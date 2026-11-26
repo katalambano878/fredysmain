@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { filterTerm } from '@/lib/sanitize';
 import {
   searchProducts,
   getProductForCart,
@@ -507,7 +508,12 @@ export async function POST(request: Request) {
     let kbContext = '';
     if (groqKey) {
       try {
-        const searchTerms = userText.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 3);
+        const searchTerms = userText
+          .toLowerCase()
+          .split(/\s+/)
+          .map((w: string) => filterTerm(w, 40).replace(/\s+/g, ''))
+          .filter((w: string) => w.length > 3)
+          .slice(0, 3);
         if (searchTerms.length > 0) {
           const { data: kbArticles } = await supabaseAdmin
             .from('support_knowledge_base')

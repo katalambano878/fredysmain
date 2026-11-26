@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import FraudDetectionAlert from '@/components/FraudDetectionAlert';
 import { supabase } from '@/lib/supabase';
 import { moneyLabel } from '@/lib/format-money';
@@ -44,6 +44,16 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
       if (el) el.remove();
     };
   }, []);
+
+  // Opened from a list's print button (?print=true): print as soon as the order is on screen.
+  const autoPrinted = useRef(false);
+  useEffect(() => {
+    if (!order || loading || autoPrinted.current) return;
+    if (new URLSearchParams(window.location.search).get('print') !== 'true') return;
+    autoPrinted.current = true;
+    const timer = setTimeout(() => window.print(), 400);
+    return () => clearTimeout(timer);
+  }, [order, loading]);
 
   useEffect(() => {
     fetchOrderDetails();

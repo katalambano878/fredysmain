@@ -39,8 +39,8 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: false,
   },
   typescript: {
-    // Plain-PG migration: allow Coolify build while types settle
-    ignoreBuildErrors: true,
+    // The type check is clean, so a build now stops on a type error instead of shipping it.
+    ignoreBuildErrors: false,
   },
   // Security + Caching headers
   async headers() {
@@ -78,13 +78,18 @@ const nextConfig: NextConfig = {
           { key: 'Cache-Control', value: 'public, s-maxage=900, stale-while-revalidate=1800' }
         ]
       },
-      // Cache static assets (JS, CSS, fonts) for 1 year (they have content hashes)
-      {
-        source: '/_next/static/:path*',
-        headers: [
-          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }
-        ]
-      },
+      // Cache static assets (JS, CSS, fonts) for 1 year (they have content hashes).
+      // Not in development: dev file names have no hash, so a cached copy goes stale and breaks the page.
+      ...(process.env.NODE_ENV === 'production'
+        ? [
+            {
+              source: '/_next/static/:path*',
+              headers: [
+                { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }
+              ]
+            },
+          ]
+        : []),
       // Cache optimized images for 30 days
       {
         source: '/_next/image',

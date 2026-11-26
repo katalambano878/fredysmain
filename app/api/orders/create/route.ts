@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import { asNumber } from '@/lib/format-money';
+import { priceCoupon } from '@/lib/coupons';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -149,7 +150,9 @@ export async function POST(req: Request) {
         );
       }
 
-      const isPreorder = Boolean(raw.is_preorder);
+      // An outfit is a preorder only when the size ordered has no stock at all. The browser's
+      // flag alone used to skip the stock check, even for sizes that were in stock.
+      const isPreorder = Boolean(raw.is_preorder) && stock <= 0;
       if (!isPreorder && stock < qty) {
         return NextResponse.json(
           { error: `Insufficient stock for ${product.name}` },
@@ -160,16 +163,21 @@ export async function POST(req: Request) {
       const lineTotal = Math.round(unitPrice * qty * 100) / 100;
       subtotal += lineTotal;
 
+      // Only known keys are kept from what the browser sent about the line.
+      const rawLineMeta = (raw.metadata && typeof raw.metadata === 'object' ? raw.metadata : {}) as Record<string, unknown>;
+      const text = (value: unknown, max: number) => (typeof value === 'string' ? value.slice(0, max) : null);
       const meta = {
-        ...(raw.metadata && typeof raw.metadata === 'object' ? raw.metadata : {}),
-        image: (raw.metadata as any)?.image || null,
-        slug: (raw.metadata as any)?.slug || product.slug || null,
+        image: text(rawLineMeta.image, 600),
+        slug: text(rawLineMeta.slug, 200) || product.slug || null,
+        preorder_shipping: text(rawLineMeta.preorder_shipping, 300),
         is_preorder: isPreorder,
         ...(resolvedVariantId ? { variant_id: resolvedVariantId } : {}),
       };
 
       lineItems.push({
         product_id: product.id,
+        // The size's own id, so stock is later taken off exactly the size that was bought.
+        ...(resolvedVariantId ? { variant_id: resolvedVariantId } : {}),
         product_name: product.name,
         variant_name: variantName,
         quantity: qty,
@@ -180,21 +188,42 @@ export async function POST(req: Request) {
       });
     }
 
-    // Shipping/tax: only accept non-negative numbers; clamp shipping to a sane max
-    const shippingTotal = Math.min(500, Math.max(0, asNumber(orderData.shipping_total, 0)));
-    const taxTotal = Math.min(subtotal, Math.max(0, asNumber(orderData.tax_total, 0)));
-    const discountTotal = Math.min(subtotal, Math.max(0, asNumber(orderData.discount_total, 0)));
+    // The shop charges no shipping or tax at checkout (doorstep delivery is agreed afterwards),
+    // and the only discount is a coupon this server has checked. Amounts sent by the browser
+    // are ignored: a discount field from the browser used to be trusted up to the full subtotal.
+    const shippingTotal = 0;
+    const taxTotal = 0;
+    subtotal = Math.round(subtotal * 100) / 100;
+    let discountTotal = 0;
+    let couponCode: string | null = null;
+    if (orderData.coupon_code) {
+      const coupon = await priceCoupon(orderData.coupon_code, subtotal, email);
+      if (!coupon.ok) {
+        return NextResponse.json({ error: `Coupon not applied. ${coupon.message}` }, { status: 400 });
+      }
+      discountTotal = coupon.discount;
+      couponCode = coupon.code;
+    }
     const total = Math.round(Math.max(0, subtotal + shippingTotal + taxTotal - discountTotal) * 100) / 100;
     if (!(total > 0)) {
       return NextResponse.json({ error: 'Invalid order total' }, { status: 400 });
     }
 
     const orderNumber =
-      typeof orderData.order_number === 'string' && /^ORD-[\w-]+$/.test(orderData.order_number)
+      typeof orderData.order_number === 'string' && /^ORD-\d{10,15}-\d{1,4}$/.test(orderData.order_number)
         ? orderData.order_number
         : `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     const orderIsPreorder = lineItems.some((i) => Boolean(i.is_preorder));
+
+    // Only the fields checkout is meant to send. Anything else from the browser is dropped,
+    // so it cannot plant flags (a coupon code, a "paid" marker) in the order record.
+    const rawMeta = orderData.metadata && typeof orderData.metadata === 'object' ? orderData.metadata : {};
+    const clientMetadata: Record<string, unknown> = {};
+    for (const key of ['first_name', 'last_name', 'tracking_number']) {
+      if (typeof rawMeta[key] === 'string') clientMetadata[key] = String(rawMeta[key]).slice(0, 120);
+    }
+    clientMetadata.is_preorder = orderIsPreorder;
 
     const insertPayload = {
       order_number: orderNumber,
@@ -215,8 +244,9 @@ export async function POST(req: Request) {
       billing_address: orderData.billing_address || orderData.shipping_address || {},
       is_preorder: orderIsPreorder,
       metadata: {
-        ...(orderData.metadata && typeof orderData.metadata === 'object' ? orderData.metadata : {}),
+        ...clientMetadata,
         guest_checkout: !orderData.user_id,
+        ...(couponCode ? { coupon_code: couponCode } : {}),
         server_priced: true,
         client_total_ignored: asNumber(orderData.total, 0),
       },

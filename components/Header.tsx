@@ -233,7 +233,9 @@ export default function Header() {
                             <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
                             <p className="text-xs text-gray-500">{p.category}</p>
                           </div>
-                          <p className="text-sm font-bold text-gray-900 whitespace-nowrap">{moneyLabel(p.price)}</p>
+                          <p className="text-sm font-bold text-gray-900 whitespace-nowrap">
+                            {Number(p.price) > 0 ? `${p.price_is_from ? 'From ' : ''}${moneyLabel(p.price)}` : 'See sizes'}
+                          </p>
                         </Link>
                       ))}
                       <button
@@ -319,9 +321,10 @@ export default function Header() {
                 <h3 className="text-2xl font-medium tracking-tight text-gray-900">What are you looking for?</h3>
                 <button
                   onClick={() => setIsSearchOpen(false)}
-                  className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-black hover:bg-gray-100 rounded-full transition-all duration-300"
+                  aria-label="Close search"
+                  className="w-10 h-10 flex items-center justify-center text-gray-600 hover:text-black hover:bg-gray-100 rounded-full transition-all duration-300"
                 >
-                  <i className="ri-close-line text-2xl"></i>
+                  <i className="ri-close-line text-2xl" aria-hidden></i>
                 </button>
               </div>
               <form onSubmit={handleSearch}>

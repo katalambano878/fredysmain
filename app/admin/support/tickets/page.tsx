@@ -17,6 +17,7 @@ export default function TicketsPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [loadError, setLoadError] = useState('');
   const [showNewModal, setShowNewModal] = useState(searchParams.get('new') === '1');
   const limit = 20;
 
@@ -34,9 +35,11 @@ export default function TicketsPage() {
 
       if (statusTab !== 'all') query = query.eq('status', statusTab);
       if (priorityFilter !== 'all') query = query.eq('priority', priorityFilter);
-      if (search) {
+      // Commas and brackets have a meaning inside an or() filter: drop them from the search text.
+      const term = search.replace(/[,()*%\\]/g, ' ').replace(/\s+/g, ' ').trim();
+      if (term) {
         query = query.or(
-          `ticket_number.ilike.%${search}%,subject.ilike.%${search}%,customer_email.ilike.%${search}%,customer_name.ilike.%${search}%`
+          `ticket_number.ilike.%${term}%,subject.ilike.%${term}%,customer_email.ilike.%${term}%,customer_name.ilike.%${term}%`
         );
       }
 
@@ -44,10 +47,12 @@ export default function TicketsPage() {
       if (error) throw error;
       setTickets(data || []);
       setTotal(count || 0);
+      setLoadError('');
     } catch (e) {
       console.error('[Tickets] load failed:', e);
       setTickets([]);
       setTotal(0);
+      setLoadError('The tickets could not load. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -121,9 +126,16 @@ export default function TicketsPage() {
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         {loading ? (
           <div className="p-8 text-center"><i className="ri-loader-4-line animate-spin text-2xl text-gray-400" /></div>
+        ) : loadError ? (
+          <div className="p-12 text-center">
+            <p className="text-sm font-medium text-gray-900">{loadError}</p>
+            <button onClick={fetchTickets} className="mt-3 px-4 py-2 text-sm font-semibold border border-gray-300 rounded-lg hover:bg-gray-50">
+              Try again
+            </button>
+          </div>
         ) : tickets.length === 0 ? (
-          <div className="p-12 text-center text-gray-400">
-            <i className="ri-ticket-line text-5xl mb-3 block" />
+          <div className="p-12 text-center text-gray-500">
+            <i className="ri-ticket-line text-5xl mb-3 block" aria-hidden />
             <p className="text-sm font-medium">No tickets found</p>
           </div>
         ) : (
@@ -186,19 +198,31 @@ export default function TicketsPage() {
 function NewTicketModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [form, setForm] = useState({ subject: '', description: '', customer_email: '', customer_name: '', priority: 'medium', category: '' });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.subject) return;
+    if (!form.subject || saving) return;
     setSaving(true);
-    await fetch('/api/support/tickets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, channel: 'manual' }),
-    });
-    setSaving(false);
-    onCreated();
-    onClose();
+    setError('');
+    try {
+      const res = await fetch('/api/support/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, channel: 'manual' }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        setError(json?.error || 'The ticket was not created. Try again.');
+        return;
+      }
+      onCreated();
+      onClose();
+    } catch {
+      setError('The ticket was not created. Check your connection and try again.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -245,6 +269,9 @@ function NewTicketModal({ onClose, onCreated }: { onClose: () => void; onCreated
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-600" />
             </div>
           </div>
+          {error && (
+            <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+          )}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
             <button type="submit" disabled={saving} className="px-4 py-2 text-sm bg-gray-700 text-white rounded-lg hover:bg-gray-900 disabled:opacity-50">

@@ -1,12 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { moneyLabel, money } from '@/lib/format-money';
 import { fetchWithTimeout } from '@/lib/fetch-timeout';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-export default function AdminDashboardClient({ smsCreditCard }: { smsCreditCard?: ReactNode }) {
+export default function AdminDashboardClient() {
   const [dateRange, setDateRange] = useState('7days');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -51,11 +51,14 @@ export default function AdminDashboardClient({ smsCreditCard }: { smsCreditCard?
   const [topProducts, setTopProducts] = useState<any[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);
 
+  const loadedOnce = useRef(false);
+
   const fetchDashboardData = useCallback(async () => {
-    setLoading(true);
+    // The full-page loading state is for the first load only; changing the chart range keeps the page in place.
+    if (!loadedOnce.current) setLoading(true);
     setLoadError(null);
     try {
-      const res = await fetchWithTimeout('/api/admin/dashboard', {
+      const res = await fetchWithTimeout(`/api/admin/dashboard?days=${dateRange === '30days' ? 30 : 7}`, {
         credentials: 'include',
         timeoutMs: 20_000,
       });
@@ -100,6 +103,7 @@ export default function AdminDashboardClient({ smsCreditCard }: { smsCreditCard?
         }
       ]);
 
+      loadedOnce.current = true;
       setChartData(Array.isArray(json.chart) ? json.chart : []);
 
       const formattedRecent = (json.recentOrders || []).map((o: any) => {
@@ -134,7 +138,7 @@ export default function AdminDashboardClient({ smsCreditCard }: { smsCreditCard?
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [dateRange]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -202,18 +206,14 @@ export default function AdminDashboardClient({ smsCreditCard }: { smsCreditCard?
           {stats.map((stat) => (
             <div key={stat.title} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-4">
-                <div className={`w-12 h-12 flex items-center justify-center bg-${stat.color}-100 text-${stat.color}-700 rounded-lg`}>
+                <div className="w-12 h-12 flex items-center justify-center bg-gray-100 text-gray-700 rounded-lg">
                   <i className={`${stat.icon} text-2xl`}></i>
                 </div>
-                <span className={`text-sm font-semibold text-gray-900`}>
-                  {stat.change}
-                </span>
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-1">{stat.value}</h3>
               <p className="text-gray-600 text-sm">{stat.title}</p>
             </div>
           ))}
-          {smsCreditCard}
         </div>
 
         {/* Revenue Chart & Quick Actions */}

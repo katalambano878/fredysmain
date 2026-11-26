@@ -21,11 +21,17 @@ function publicBase(): string {
 }
 
 function signingSecret(): string {
-  return (
+  const secret =
     process.env.STORAGE_SIGNING_SECRET ||
+    process.env.AUTH_JWT_SECRET ||
     process.env.JWT_SECRET ||
-    "storage-dev-secret"
-  );
+    process.env.SUPABASE_JWT_SECRET;
+  if (secret) return secret;
+  // A known default would let anyone sign their own links to private files.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("STORAGE_SIGNING_SECRET (or AUTH_JWT_SECRET) must be set");
+  }
+  return "storage-dev-secret";
 }
 
 export function signObjectToken(bucket: string, objectPath: string, expEpoch: number): string {
@@ -49,11 +55,25 @@ export function verifyObjectToken(
   return out === 0;
 }
 
+const BUCKET_NAME = /^[a-z0-9][a-z0-9_-]{0,62}$/;
+
+/**
+ * A bucket is a plain folder name. Without this check a bucket of "../../.." pointed the
+ * storage root at the whole disk, and any file on the server could be read over the web.
+ */
+function assertSafeNames(bucket: string, objectPath: string) {
+  if (!BUCKET_NAME.test(bucket)) throw new Error("Invalid bucket");
+  if (objectPath.includes("\0")) throw new Error("Invalid path");
+  const parts = objectPath.split(/[\\/]+/);
+  if (parts.some((part) => part === ".." || part === ".")) throw new Error("Path traversal blocked");
+}
+
 function safeJoin(bucket: string, objectPath: string): string {
+  assertSafeNames(bucket, objectPath);
   const clean = objectPath.replace(/^\/+/, "");
-  const full = path.normalize(path.join(STORAGE_ROOT, bucket, clean));
   const base = path.normalize(path.join(STORAGE_ROOT, bucket));
-  if (!full.startsWith(base)) throw new Error("Path traversal blocked");
+  const full = path.normalize(path.join(base, clean));
+  if (full !== base && !full.startsWith(base + path.sep)) throw new Error("Path traversal blocked");
   return full;
 }
 
@@ -68,10 +88,12 @@ export function renderCacheFilePath(
   objectPath: string,
   variant: string
 ): string {
+  assertSafeNames(bucket, objectPath);
+  if (!/^[A-Za-z0-9._-]{1,80}$/.test(variant)) throw new Error("Invalid variant");
   const clean = objectPath.replace(/^\/+/, "");
   const base = path.normalize(path.join(STORAGE_ROOT, ".render-cache", bucket));
   const full = path.normalize(path.join(base, `${clean}.${variant}`));
-  if (!full.startsWith(base)) throw new Error("Path traversal blocked");
+  if (!full.startsWith(base + path.sep)) throw new Error("Path traversal blocked");
   return full;
 }
 

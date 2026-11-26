@@ -4,9 +4,8 @@ interface CheckoutStepsProps {
 
 export default function CheckoutSteps({ currentStep }: CheckoutStepsProps) {
   const steps = [
-    { number: 1, title: 'Shipping', icon: 'ri-map-pin-line' },
-    { number: 2, title: 'Delivery', icon: 'ri-truck-line' },
-    { number: 3, title: 'Payment', icon: 'ri-bank-card-line' }
+    { number: 1, title: 'Your details', icon: 'ri-map-pin-line' },
+    { number: 2, title: 'Delivery and payment', icon: 'ri-truck-line' },
   ];
 
   return (
@@ -17,12 +16,12 @@ export default function CheckoutSteps({ currentStep }: CheckoutStepsProps) {
             <div className={`w-12 h-12 flex items-center justify-center rounded-full font-bold transition-colors ${
               currentStep >= step.number
                 ? 'bg-gray-900 text-white'
-                : 'bg-gray-200 text-gray-500'
+                : 'bg-gray-200 text-gray-600'
             }`}>
-              <i className={`${step.icon} text-xl`}></i>
+              <i className={`${step.icon} text-xl`} aria-hidden></i>
             </div>
             <p className={`mt-2 text-sm font-semibold ${
-              currentStep >= step.number ? 'text-gray-900' : 'text-gray-500'
+              currentStep >= step.number ? 'text-gray-900' : 'text-gray-600'
             }`}>
               {step.title}
             </p>

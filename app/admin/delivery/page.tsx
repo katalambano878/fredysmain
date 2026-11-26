@@ -52,6 +52,7 @@ export default function DeliveryDashboard() {
     const [stats, setStats] = useState<Stats | null>(null);
     const [recentAssignments, setRecentAssignments] = useState<Assignment[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
 
     useEffect(() => {
         fetchData();
@@ -65,12 +66,17 @@ export default function DeliveryDashboard() {
                 fetch('/api/delivery?action=stats'),
                 fetch('/api/delivery?action=recent'),
             ]);
+            for (const res of [statsRes, recentRes]) {
+                if (!res.ok) throw new Error(res.status === 401 ? 'Your session has expired. Sign in again.' : 'The delivery data could not load.');
+            }
             const statsData = await statsRes.json();
             const recentData = await recentRes.json();
             setStats(statsData.stats);
             setRecentAssignments(recentData.assignments || []);
+            setLoadError('');
         } catch (err) {
             console.error('Failed to fetch dashboard data:', err);
+            setLoadError(err instanceof Error ? err.message : 'The delivery data could not load.');
         } finally {
             setLoading(false);
         }
@@ -98,6 +104,11 @@ export default function DeliveryDashboard() {
             </div>
 
             <DeliveryNav />
+            {loadError && (
+                <p role="alert" className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                    {loadError} The figures below may be out of date or empty.
+                </p>
+            )}
 
             {loading ? (
                 <div className="flex items-center justify-center py-20">

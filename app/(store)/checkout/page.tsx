@@ -5,6 +5,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import CheckoutSteps from '@/components/CheckoutSteps';
 import OrderSummary from '@/components/OrderSummary';
+import CouponField from '@/components/CouponField';
+import { writeAppliedCouponCode, type CouponPreview } from '@/lib/applied-coupon';
 import { useCart } from '@/context/CartContext';
 import { supabase } from '@/lib/supabase';
 import { usePageTitle } from '@/hooks/usePageTitle';
@@ -65,6 +67,7 @@ export default function CheckoutPage() {
   const availableCities = shippingData.region ? regionCities[shippingData.region] || [] : [];
 
   const [deliveryMethod, setDeliveryMethod] = useState('pickup');
+  const [coupon, setCoupon] = useState<CouponPreview | null>(null);
   const hubtelEnabled = process.env.NEXT_PUBLIC_ENABLE_HUBTEL === 'true';
   const [paymentMethod, setPaymentMethod] = useState(hubtelEnabled ? 'hubtel' : 'moolre');
   const [errors, setErrors] = useState<any>({});
@@ -117,14 +120,10 @@ export default function CheckoutPage() {
       }
     }
     checkUser();
-
-    const timer = setTimeout(() => {
-      if (cart.length === 0 && !isLoading) {
-        // router.push('/cart');
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [cart, router, isLoading]);
+    // Once, when the page opens. Re-running this on every cart refresh put the saved address
+    // back over whatever the shopper had typed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Scroll to top when step changes
   useEffect(() => {
@@ -153,7 +152,9 @@ export default function CheckoutPage() {
   const subtotal = cartSubtotal;
   const shippingCost = 0;
   const tax = 0;
-  const total = subtotal + shippingCost + tax;
+  // The server works out the coupon again when the order is created; this is the same figure, for display.
+  const couponDiscount = coupon ? Math.min(coupon.discount, subtotal) : 0;
+  const total = Math.max(0, subtotal + shippingCost + tax - couponDiscount);
   const hasPreorderItems = cart.some((i) => i.isPreorder);
 
   const validateShipping = () => {
@@ -208,10 +209,11 @@ export default function CheckoutPage() {
       return;
     }
 
+    let leavingPage = false;
     try {
       const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       const trackingId = Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
-      const trackingNumber = `SLI-${trackingId}`;
+      const trackingNumber = `FRB-${trackingId}`;
 
       // Normalize phone to 0XXXXXXXXX format
       const phoneDigits = shippingData.phone.replace(/\D/g, '');
@@ -288,7 +290,7 @@ export default function CheckoutPage() {
             subtotal: subtotal,
             tax_total: tax,
             shipping_total: shippingCost,
-            discount_total: 0,
+            coupon_code: coupon?.code || null,
             total: total,
             shipping_method: deliveryMethod,
             payment_method: paymentMethod,
@@ -312,6 +314,8 @@ export default function CheckoutPage() {
         throw new Error(createResult.error || 'Failed to create order');
       }
       const order = createResult.order;
+      // The coupon belongs to this order now; a later order starts without it.
+      writeAppliedCouponCode(null);
 
       if (user && (saveAddress || savedAddresses.length === 0)) {
         try {
@@ -348,7 +352,9 @@ export default function CheckoutPage() {
             throw new Error(paymentResult.message || 'Payment initialization failed');
           }
 
-          // Keep cart until paid — if Hubtel cancels/back-button, customer can retry
+          // Keep cart until paid — if Hubtel cancels/back-button, customer can retry.
+          // The button stays disabled while the browser leaves for the payment page.
+          leavingPage = true;
           window.location.href = paymentResult.url;
           return;
 
@@ -372,6 +378,7 @@ export default function CheckoutPage() {
 
       // 5. Clear Cart & Redirect (For COD)
       clearCart();
+      leavingPage = true;
       router.push(
         `/order-success?order=${encodeURIComponent(orderNumber)}&email=${encodeURIComponent(shippingData.email)}`
       );
@@ -380,7 +387,7 @@ export default function CheckoutPage() {
       console.error('Checkout error:', err);
       alert('Failed to place order: ' + err.message);
     } finally {
-      setIsLoading(false);
+      if (!leavingPage) setIsLoading(false);
     }
   };
 
@@ -443,50 +450,21 @@ export default function CheckoutPage() {
         )}
 
         {currentStep === 1 && (
-          <div className="mb-8 bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-6">Checkout As</h2>
-            <div className="grid md:grid-cols-2 gap-4">
-              <button
-                onClick={() => !user && setCheckoutType('guest')}
-                className={`p-6 rounded-xl border-2 transition-all text-left cursor-pointer ${checkoutType === 'guest'
-                  ? 'border-emerald-700 bg-emerald-50'
-                  : 'border-gray-200 hover:border-gray-300'
-                  } ${user ? 'opacity-50 cursor-not-allowed' : ''}`}
-                disabled={!!user}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <i className="ri-user-line text-3xl text-emerald-700"></i>
-                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${checkoutType === 'guest' ? 'border-emerald-700 bg-emerald-700' : 'border-gray-300'
-                    }`}>
-                    {checkoutType === 'guest' && <i className="ri-check-line text-white text-sm"></i>}
-                  </div>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">Guest Checkout</h3>
-                <p className="text-sm text-gray-600">Quick checkout without creating an account</p>
-                {user && <p className="text-xs text-emerald-600 mt-2">You are logged in</p>}
-              </button>
-
-              <button
-                onClick={() => setCheckoutType('account')}
-                className={`p-6 rounded-xl border-2 transition-all text-left cursor-pointer ${checkoutType === 'account'
-                  ? 'border-emerald-700 bg-emerald-50'
-                  : 'border-gray-200 hover:border-gray-300'
-                  }`}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <i className="ri-account-circle-line text-3xl text-emerald-700"></i>
-                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${checkoutType === 'account' ? 'border-emerald-700 bg-emerald-700' : 'border-gray-300'
-                    }`}>
-                    {checkoutType === 'account' && <i className="ri-check-line text-white text-sm"></i>}
-                  </div>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">{user ? 'My Account' : 'Create Account'}</h3>
-                <p className="text-sm text-gray-600">
-                  {user ? `Logged in as ${user.email}` : 'Save info, track orders & earn loyalty points'}
-                </p>
-              </button>
-            </div>
-          </div>
+          <p className="mb-8 rounded-xl border border-gray-200 bg-white px-5 py-4 text-sm text-gray-700">
+            {user ? (
+              <>
+                Signed in as <span className="font-semibold text-gray-900">{user.email}</span>.
+              </>
+            ) : (
+              <>
+                You are checking out as a guest. No account is needed.{' '}
+                <Link href="/auth/login" className="font-semibold text-gray-900 underline">
+                  Sign in
+                </Link>{' '}
+                if you already have one.
+              </>
+            )}
+          </p>
         )}
 
         <CheckoutSteps currentStep={currentStep} />
@@ -496,7 +474,7 @@ export default function CheckoutPage() {
             {currentStep === 1 && (
               <>
                 <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-                  <h2 className="text-xl font-bold text-gray-900 mb-6">Shipping Information</h2>
+                  <h2 className="text-xl font-bold text-gray-900 mb-6">Your details</h2>
 
                   <div className="space-y-4">
                     {user && savedAddresses.length > 0 && (
@@ -564,56 +542,56 @@ export default function CheckoutPage() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">
+                        <label htmlFor="checkout-first-name" className="block text-sm font-semibold text-gray-900 mb-2">
                           First Name *
                         </label>
-                        <input
+                        <input id="checkout-first-name"
                           type="text"
                           value={shippingData.firstName}
                           onChange={(e) => setShippingData({ ...shippingData, firstName: e.target.value })}
                           className={`w-full px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${errors.firstName ? 'border-red-500' : 'border-gray-300'
                             }`}
-                          placeholder="John"
+                          autoComplete="given-name"
                         />
                         {errors.firstName && <p className="text-sm text-red-600 mt-1">{errors.firstName}</p>}
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">
+                        <label htmlFor="checkout-last-name" className="block text-sm font-semibold text-gray-900 mb-2">
                           Last Name *
                         </label>
-                        <input
+                        <input id="checkout-last-name"
                           type="text"
                           value={shippingData.lastName}
                           onChange={(e) => setShippingData({ ...shippingData, lastName: e.target.value })}
                           className={`w-full px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${errors.lastName ? 'border-red-500' : 'border-gray-300'
                             }`}
-                          placeholder="Doe"
+                          autoComplete="family-name"
                         />
                         {errors.lastName && <p className="text-sm text-red-600 mt-1">{errors.lastName}</p>}
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-semibold text-gray-900 mb-2">
+                      <label htmlFor="checkout-email-address" className="block text-sm font-semibold text-gray-900 mb-2">
                         Email Address *
                       </label>
-                      <input
+                      <input id="checkout-email-address"
                         type="email"
                         value={shippingData.email}
                         readOnly={!!user}
                         onChange={(e) => setShippingData({ ...shippingData, email: e.target.value })}
                         className={`w-full px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${errors.email ? 'border-red-500' : 'border-gray-300'
                           } ${user ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                        placeholder="you@example.com"
+                        autoComplete="email"
                       />
                       {errors.email && <p className="text-sm text-red-600 mt-1">{errors.email}</p>}
                     </div>
 
                     <div>
-                      <label className="block text-sm font-semibold text-gray-900 mb-2">
+                      <label htmlFor="checkout-phone-number" className="block text-sm font-semibold text-gray-900 mb-2">
                         Phone Number *
                       </label>
-                      <input
+                      <input id="checkout-phone-number"
                         type="tel"
                         value={shippingData.phone}
                         onChange={(e) => {
@@ -625,7 +603,8 @@ export default function CheckoutPage() {
                         maxLength={15}
                         className={`w-full px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${errors.phone ? 'border-red-500' : 'border-gray-300'
                           }`}
-                        placeholder="0551234567"
+                        autoComplete="tel"
+                        inputMode="tel"
                       />
                       {errors.phone && <p className="text-sm text-red-600 mt-1">{errors.phone}</p>}
                       {!errors.phone && shippingData.phone && (() => {
@@ -638,10 +617,10 @@ export default function CheckoutPage() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-semibold text-gray-900 mb-2">
+                      <label htmlFor="checkout-street-address" className="block text-sm font-semibold text-gray-900 mb-2">
                         Street Address *
                       </label>
-                      <input
+                      <input id="checkout-street-address"
                         type="text"
                         value={shippingData.address}
                         onChange={(e) => setShippingData({ ...shippingData, address: e.target.value })}
@@ -654,10 +633,10 @@ export default function CheckoutPage() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">
+                        <label htmlFor="checkout-region" className="block text-sm font-semibold text-gray-900 mb-2">
                           Region *
                         </label>
-                        <select
+                        <select id="checkout-region"
                           value={shippingData.region}
                           onChange={(e) => setShippingData({ ...shippingData, region: e.target.value, city: '' })}
                           className={`w-full px-4 py-3 border-2 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white ${errors.region ? 'border-red-500' : 'border-gray-300'
@@ -671,10 +650,10 @@ export default function CheckoutPage() {
                         {errors.region && <p className="text-sm text-red-600 mt-1">{errors.region}</p>}
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-900 mb-2">
+                        <label htmlFor="checkout-city" className="block text-sm font-semibold text-gray-900 mb-2">
                           City *
                         </label>
-                        <select
+                        <select id="checkout-city"
                           value={shippingData.city}
                           onChange={(e) => setShippingData({ ...shippingData, city: e.target.value })}
                           disabled={!shippingData.region}
@@ -845,7 +824,12 @@ export default function CheckoutPage() {
               shipping={shippingCost}
               tax={tax}
               total={total}
-            />
+              discount={couponDiscount}
+              couponCode={coupon?.code}
+              deliveryMethod={deliveryMethod}
+            >
+              <CouponField subtotal={subtotal} email={shippingData.email || undefined} onChange={setCoupon} />
+            </OrderSummary>
           </div>
         </div>
       </div>

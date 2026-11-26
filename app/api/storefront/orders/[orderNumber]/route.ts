@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { emailsMatch } from '@/lib/order-access';
 
 /**
  * GET /api/storefront/orders/[orderNumber]?email=
@@ -24,10 +25,9 @@ export async function GET(
       .from('orders')
       .select('*, order_items(*)')
       .eq('order_number', orderNumber)
-      .ilike('email', email)
       .maybeSingle();
 
-    if (error || !order) {
+    if (error || !order || !emailsMatch(order.email, email)) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 

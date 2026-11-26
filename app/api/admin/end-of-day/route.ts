@@ -158,7 +158,7 @@ export async function GET(request: Request) {
       const webRevenue = Number(t.web_revenue) || 0;
       const posRevenue = Number(t.pos_revenue) || 0;
       const compare = compareRes.status === 'fulfilled' ? compareRes.value.rows[0] || {} : {};
-      const guest = guestsRes.status === 'fulfilled' ? guestsRes.value.rows[0] || {} : {};
+      const guest: Record<string, any> = guestsRes.status === 'fulfilled' ? guestsRes.value.rows[0] || {} : {};
 
       const products = productsRes.status === 'fulfilled' ? productsRes.value.rows : [];
       const lowStockAfter = products.filter((p: any) => Number(p.stock_remaining) < 10);

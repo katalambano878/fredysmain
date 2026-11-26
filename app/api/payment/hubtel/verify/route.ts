@@ -1,3 +1,4 @@
+import { referenceBelongsToOrder } from '@/lib/payment-refs';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { sendOrderConfirmation } from '@/lib/notifications';
@@ -35,13 +36,6 @@ export async function POST(req: Request) {
                 ? externalRef
                 : null;
 
-        if (normalizedExternalRef && !normalizedExternalRef.startsWith(orderNumber)) {
-            return NextResponse.json(
-                { success: false, message: 'Invalid external reference for order' },
-                { status: 400 },
-            );
-        }
-
         const { data: order, error: fetchError } = await supabaseAdmin
             .from('orders')
             .select('id, order_number, payment_status, status, total, email, metadata')
@@ -50,6 +44,13 @@ export async function POST(req: Request) {
 
         if (fetchError || !order) {
             return NextResponse.json({ success: false, message: 'Order not found' }, { status: 404 });
+        }
+
+        if (normalizedExternalRef && !(await referenceBelongsToOrder(normalizedExternalRef, order))) {
+            return NextResponse.json(
+                { success: false, message: 'Invalid external reference for order' },
+                { status: 400 },
+            );
         }
 
         const expectedAmount = Number(order.total) || 0;
@@ -79,9 +80,10 @@ export async function POST(req: Request) {
             );
         }
 
+        const storedRef = String((order.metadata as any)?.hubtel_client_reference || '');
         const hubtelRef =
             normalizedExternalRef ||
-            (order.metadata as any)?.hubtel_client_reference ||
+            (storedRef && (await referenceBelongsToOrder(storedRef, order)) ? storedRef : '') ||
             orderNumber;
 
         let verified = false;

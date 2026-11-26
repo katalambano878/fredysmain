@@ -7,10 +7,14 @@ export function isPlainPostgres(): boolean {
 }
 
 export function authJwtSecret(): string {
-  return (
+  const secret =
     process.env.AUTH_JWT_SECRET ||
     process.env.JWT_SECRET ||
-    process.env.SUPABASE_JWT_SECRET ||
-    "dev-auth-secret-change-me"
-  );
+    process.env.SUPABASE_JWT_SECRET;
+  if (secret) return secret;
+  // With a known default, anyone could make their own admin session. Refuse to run that way live.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("AUTH_JWT_SECRET must be set");
+  }
+  return "dev-auth-secret-change-me";
 }

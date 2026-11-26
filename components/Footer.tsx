@@ -144,8 +144,8 @@ export default function Footer() {
               <ul className="space-y-4 text-emerald-100/80">
                 <li><Link href="/shop" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> All Products</Link></li>
                 <li><Link href="/categories" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> Categories</Link></li>
-                <li><Link href="/shop?sort=newest" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> New Arrivals</Link></li>
-                <li><Link href="/shop?sort=bestsellers" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> Best Sellers</Link></li>
+                <li><Link href="/shop?sort=new" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> New Arrivals</Link></li>
+                <li><Link href="/sale" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> Sale</Link></li>
                 <li><Link href="/gallery" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> Gallery</Link></li>
               </ul>
             </FooterSection>
@@ -155,14 +155,13 @@ export default function Footer() {
                 <li><Link href="/contact" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> Contact Us</Link></li>
                 <li><Link href="/order-tracking" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> Track My Order</Link></li>
                 <li><Link href="/shipping" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> Shipping Info</Link></li>
-                <li><Link href="/returns" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> Returns Policy</Link></li>
+                <li><Link href="/returns" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> Returns and Exchanges</Link></li>
               </ul>
             </FooterSection>
 
             <FooterSection title="Company">
               <ul className="space-y-4 text-emerald-100/80">
                 <li><Link href="/about" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> Our Story</Link></li>
-                <li><Link href="/blog" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> Blog</Link></li>
                 <li><Link href="/privacy" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> Privacy Policy</Link></li>
                 <li><Link href="/terms" className="hover:text-emerald-300 transition-colors flex items-center gap-2"><i className="ri-arrow-right-s-line opacity-50"></i> Terms of Service</Link></li>
               </ul>
@@ -171,13 +170,9 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-emerald-800/50 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-emerald-400/60">
+        <div className="border-t border-emerald-800/50 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-emerald-200/80">
           <p>
-            &copy;{' '}
-            <Link href="/admin/login" className="hover:text-emerald-300/80 transition-colors">
-              {new Date().getFullYear()}
-            </Link>{' '}
-            {siteName}. All rights reserved.
+            &copy; {new Date().getFullYear()} {siteName}. All rights reserved.
           </p>
           <p>
             Powered by{' '}
@@ -190,11 +185,10 @@ export default function Footer() {
               Doctor Barns Tech
             </a>
           </p>
-          <div className="flex gap-4 grayscale opacity-50">
-            <i className="ri-visa-line text-2xl"></i>
-            <i className="ri-mastercard-line text-2xl"></i>
-            <i className="ri-paypal-line text-2xl"></i>
-          </div>
+          <p className="flex items-center gap-2">
+            <i className="ri-smartphone-line text-lg" aria-hidden></i>
+            Pay with Mobile Money
+          </p>
         </div>
       </div>
     </footer>

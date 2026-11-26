@@ -106,7 +106,11 @@ export default function PrintInventoryPage() {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
     });
 
-    const totalValue = products.reduce((sum, p) => sum + (Number(p.price) || 0) * (Number(p.stock) ?? 0), 0);
+    // Most outfits are priced per size, so the value is each size's quantity at that size's price.
+    const valueOf = (p: any) =>
+        p.stock_value != null ? Number(p.stock_value) || 0 : (Number(p.price) || 0) * (Number(p.stock) || 0);
+    const priceOf = (p: any) => Number(p.display_price ?? p.price) || 0;
+    const totalValue = products.reduce((sum, p) => sum + valueOf(p), 0);
 
     return (
         <div className="p-8 max-w-6xl mx-auto bg-white min-h-screen text-black">
@@ -192,9 +196,9 @@ export default function PrintInventoryPage() {
                             <td className="p-3 border border-gray-300 font-semibold text-sm">{product.name}</td>
                             <td className="p-3 border border-gray-300 text-sm font-mono text-gray-700">{product.sku || '-'}</td>
                             <td className="p-3 border border-gray-300 text-sm">{product.category || '-'}</td>
-                            <td className="p-3 border border-gray-300 text-right font-medium whitespace-nowrap">GH₵ {(Number(product.price) || 0).toFixed(2)}</td>
+                            <td className="p-3 border border-gray-300 text-right font-medium whitespace-nowrap">{product.price_is_from ? 'From ' : ''}GH₵ {priceOf(product).toFixed(2)}</td>
                             <td className="p-3 border border-gray-300 text-center font-bold">{product.stock ?? 0}</td>
-                            <td className="p-3 border border-gray-300 text-right font-semibold whitespace-nowrap">GH₵ {((Number(product.price) || 0) * (Number(product.stock) ?? 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="p-3 border border-gray-300 text-right font-semibold whitespace-nowrap">GH₵ {valueOf(product).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                             <td className="p-3 border border-gray-300 text-center text-xs uppercase font-semibold tracking-wider">{product.status}</td>
                         </tr>
                     ))}

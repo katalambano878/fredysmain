@@ -24,17 +24,18 @@ function OrderSuccessContent() {
   const paymentSuccess = searchParams.get('payment_success');
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [showConfetti, setShowConfetti] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const { clearCart } = useCart();
   const purchaseTracked = useRef(false);
 
   useEffect(() => {
-    // Clear cart once customer lands on success (paid or gateway return)
-    if (orderNumber && (paymentSuccess === 'true' || order?.payment_status === 'paid')) {
+    // The cart is emptied only once the order is really paid. Coming back from the payment
+    // page is not proof of payment, and the shopper needs the cart to try again.
+    if (orderNumber && order?.payment_status === 'paid') {
       clearCart();
     }
-  }, [orderNumber, paymentSuccess, order?.payment_status, clearCart]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderNumber, order?.payment_status]);
 
   // Meta Pixel Purchase (deduped with server CAPI via purchase_{order_number})
   useEffect(() => {
@@ -166,107 +167,98 @@ function OrderSuccessContent() {
   }
 
   const orderDate = new Date(order.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-  const estimatedDelivery = new Date(new Date(order.created_at).getTime() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-  const pointsEarned = Math.floor(order.total / 10);
+  const isPaid = order.payment_status === 'paid';
+  // 'pickup', 'doorstep', or '' when the order record does not say.
+  const method = String(order.shipping_method || order.metadata?.shipping_method || '').toLowerCase();
+  const isPickup = method === 'pickup';
+  const discount = Number(order.discount_total) || 0;
+  const money = (value: unknown) => `GH₵${(Number(value) || 0).toFixed(2)}`;
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-blue-50">
-      {showConfetti && (
-        <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
-          {[...Array(50)].map((_, i) => (
-            <div
-              key={i}
-              className="absolute animate-fall"
-              style={{
-                left: `${Math.random() * 100}%`,
-                top: `-${Math.random() * 20}%`,
-                animationDelay: `${Math.random() * 3}s`,
-                animationDuration: `${3 + Math.random() * 2}s`
-              }}
-            >
-              <i className={`ri-${['heart', 'star', 'gift'][Math.floor(Math.random() * 3)]}-fill text-${['emerald', 'amber', 'blue'][Math.floor(Math.random() * 3)]}-500 text-xl opacity-70`}></i>
-            </div>
-          ))}
-        </div>
-      )}
-
+    <main className="min-h-screen bg-gray-50">
       <section className="py-16">
         <div className="max-w-4xl mx-auto px-4 sm:px-6">
-          <div className="bg-white rounded-2xl shadow-xl p-8 md:p-12 text-center mb-8">
-            <div className="w-24 h-24 flex items-center justify-center mx-auto mb-6 bg-emerald-100 rounded-full">
-              <i className="ri-checkbox-circle-fill text-6xl text-emerald-600"></i>
-            </div>
-
-            <h1 className="text-4xl font-bold text-gray-900 mb-4">Order Confirmed!</h1>
-            <p className="text-xl text-gray-600 mb-8">
-              Thank you for your purchase. We{'\u2019'}re processing your order now.
-            </p>
-
-            {verifying && (
-              <div className="mb-6 rounded-xl border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-900 flex items-center justify-center gap-2">
-                <i className="ri-loader-4-line animate-spin"></i>
-                Verifying payment status...
-              </div>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 md:p-12 text-center mb-8">
+            {isPaid ? (
+              <>
+                <div className="w-20 h-20 flex items-center justify-center mx-auto mb-6 bg-emerald-100 rounded-full">
+                  <i className="ri-checkbox-circle-fill text-5xl text-emerald-700" aria-hidden></i>
+                </div>
+                <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Order confirmed</h1>
+                <p className="text-lg text-gray-700 mb-8">
+                  Thank you. Your payment came through and we have your order.
+                </p>
+              </>
+            ) : verifying ? (
+              <>
+                <div className="w-20 h-20 flex items-center justify-center mx-auto mb-6 bg-gray-100 rounded-full">
+                  <i className="ri-loader-4-line text-5xl text-gray-700 animate-spin" aria-hidden></i>
+                </div>
+                <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Confirming your payment</h1>
+                <p className="text-lg text-gray-700 mb-8" role="status">
+                  We are checking with the payment provider. This can take a minute. Please keep this page open.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="w-20 h-20 flex items-center justify-center mx-auto mb-6 bg-amber-100 rounded-full">
+                  <i className="ri-time-line text-5xl text-amber-700" aria-hidden></i>
+                </div>
+                <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">Payment not received yet</h1>
+                <p className="text-lg text-gray-700 mb-6">
+                  Your order is saved but it is not confirmed until it is paid. If you approved the payment on your
+                  phone, it may still be on its way: check again in a moment. Otherwise you can pay now.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
+                  <Link
+                    href={`/pay/${order.id}`}
+                    className="bg-gray-900 hover:bg-gray-800 text-white px-8 py-4 rounded-lg font-semibold transition-colors inline-flex items-center justify-center whitespace-nowrap"
+                  >
+                    Pay now
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => verifyPayment(order.order_number, order)}
+                    className="border-2 border-gray-300 hover:border-gray-400 text-gray-800 px-8 py-4 rounded-lg font-semibold transition-colors inline-flex items-center justify-center whitespace-nowrap"
+                  >
+                    Check again
+                  </button>
+                </div>
+              </>
             )}
 
-            <div className="bg-emerald-50 rounded-xl p-6 mb-8">
-              <div className="grid md:grid-cols-3 gap-6 text-center">
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Order Number</p>
-                  <p className="text-lg font-bold text-gray-900">{order.order_number}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Order Date</p>
-                  <p className="text-lg font-bold text-gray-900">{orderDate}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Estimated Delivery</p>
-                  <p className="text-lg font-bold text-emerald-700">{estimatedDelivery}</p>
-                </div>
+            <dl className="bg-gray-50 border border-gray-200 rounded-xl p-6 mb-8 grid sm:grid-cols-2 gap-6 text-center">
+              <div>
+                <dt className="text-sm text-gray-600 mb-1">Order number</dt>
+                <dd className="text-lg font-bold text-gray-900 break-all">{order.order_number}</dd>
               </div>
-            </div>
+              <div>
+                <dt className="text-sm text-gray-600 mb-1">Order date</dt>
+                <dd className="text-lg font-bold text-gray-900">{orderDate}</dd>
+              </div>
+            </dl>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
-                href={`/account?tab=orders`}
-                className="bg-emerald-700 hover:bg-emerald-800 text-white px-8 py-4 rounded-lg font-semibold transition-colors inline-flex items-center justify-center whitespace-nowrap"
+                href="/order-tracking"
+                className={`${isPaid ? 'bg-gray-900 hover:bg-gray-800 text-white' : 'border-2 border-gray-300 hover:border-gray-400 text-gray-800'} px-8 py-4 rounded-lg font-semibold transition-colors inline-flex items-center justify-center whitespace-nowrap`}
               >
-                <i className="ri-file-list-3-line mr-2"></i>
-                View Order
+                <i className="ri-map-pin-time-line mr-2" aria-hidden></i>
+                Track this order
               </Link>
               <Link
                 href="/shop"
-                className="border-2 border-gray-300 hover:border-gray-400 text-gray-700 px-8 py-4 rounded-lg font-semibold transition-colors inline-flex items-center justify-center whitespace-nowrap"
+                className="border-2 border-gray-300 hover:border-gray-400 text-gray-800 px-8 py-4 rounded-lg font-semibold transition-colors inline-flex items-center justify-center whitespace-nowrap"
               >
-                <i className="ri-shopping-bag-line mr-2"></i>
-                Continue Shopping
+                <i className="ri-shopping-bag-line mr-2" aria-hidden></i>
+                Continue shopping
               </Link>
-            </div>
-
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-6 border-2 border-amber-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 flex items-center justify-center bg-amber-500 rounded-full">
-                    <i className="ri-star-fill text-white text-2xl"></i>
-                  </div>
-                  <div className="text-left">
-                    <p className="font-bold text-gray-900 text-lg">You Earned {pointsEarned} Points!</p>
-                    <p className="text-sm text-gray-600">Join our loyalty program to redeem.</p>
-                  </div>
-                </div>
-                <Link
-                  href="/register"
-                  className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 rounded-lg font-semibold transition-colors whitespace-nowrap"
-                >
-                  Join Now
-                </Link>
-              </div>
             </div>
           </div>
 
           <div className="grid md:grid-cols-2 gap-8 mb-8">
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Order Items</h2>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">Order items</h2>
               <div className="space-y-4">
                 {order.order_items?.map((item: any) => (
                   <div key={item.id} className="flex items-center space-x-4">
@@ -280,115 +272,107 @@ function OrderSuccessContent() {
                     <div className="flex-1">
                       <p className="font-semibold text-gray-900 line-clamp-2">{item.product_name}</p>
                       <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
-                      {item.variant_name && (
-                        <p className="text-xs text-gray-500">{item.variant_name}</p>
-                      )}
+                      {item.variant_name && <p className="text-xs text-gray-600">Size: {item.variant_name}</p>}
                     </div>
-                    <p className="font-bold text-gray-900">GH&#8373;{item.unit_price.toFixed(2)}</p>
+                    <p className="font-bold text-gray-900">{money(item.unit_price)}</p>
                   </div>
                 ))}
               </div>
               <div className="border-t border-gray-200 mt-4 pt-4">
-                <div className="flex justify-between text-sm text-gray-600 mb-2">
+                <div className="flex justify-between text-sm text-gray-700 mb-2">
                   <span>Subtotal</span>
-                  <span>GH&#8373;{order.subtotal?.toFixed(2)}</span>
+                  <span>{money(order.subtotal)}</span>
                 </div>
-                <div className="flex justify-between text-sm text-gray-600 mb-2">
-                  <span>Shipping</span>
-                  <span>GH&#8373;{order.shipping_total?.toFixed(2)}</span>
+                {discount > 0 && (
+                  <div className="flex justify-between text-sm text-gray-700 mb-2">
+                    <span>Coupon{order.metadata?.coupon_code ? ` (${order.metadata.coupon_code})` : ''}</span>
+                    <span>-{money(discount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between gap-4 text-sm text-gray-700 mb-2">
+                  <span>Delivery</span>
+                  <span className="text-right">
+                    {Number(order.shipping_total) > 0
+                      ? money(order.shipping_total)
+                      : isPickup
+                        ? 'Free store pickup'
+                        : method
+                          ? 'We will confirm the cost with you'
+                          : 'Pickup is free. Doorstep cost is confirmed with you.'}
+                  </span>
                 </div>
 
                 <div className="flex justify-between text-xl font-bold text-gray-900 border-t border-gray-200 pt-2">
-                  <span>Total Paid</span>
-                  <span>GH&#8373;{order.total?.toFixed(2)}</span>
+                  <span>{isPaid ? 'Total paid' : 'Total to pay'}</span>
+                  <span>{money(order.total)}</span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Delivery Details</h2>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">{isPickup ? 'Your details' : 'Delivery details'}</h2>
               <div className="space-y-3">
                 {order.shipping_address && (
                   <>
                     <div>
-                      <p className="text-sm text-gray-600 mb-1">Recipient</p>
+                      <p className="text-sm text-gray-600 mb-1">Name</p>
                       <p className="font-semibold text-gray-900">
                         {order.shipping_address.firstName} {order.shipping_address.lastName}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-600 mb-1">Address</p>
-                      <p className="text-gray-900">{order.shipping_address.address}</p>
-                      <p className="text-gray-900">{order.shipping_address.city}, {order.shipping_address.region}</p>
-                    </div>
+                    {(order.shipping_address.address || order.shipping_address.city) && (
+                      <div>
+                        <p className="text-sm text-gray-600 mb-1">Address</p>
+                        <p className="text-gray-900">{order.shipping_address.address}</p>
+                        <p className="text-gray-900">
+                          {[order.shipping_address.city, order.shipping_address.region].filter(Boolean).join(', ')}
+                        </p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-sm text-gray-600 mb-1">Phone</p>
                       <p className="text-gray-900">{order.phone}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-600 mb-1">Email</p>
-                      <p className="text-gray-900">{order.email}</p>
+                      <p className="text-gray-900 break-all">{order.email}</p>
                     </div>
                   </>
                 )}
               </div>
 
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <h3 className="font-semibold text-gray-900 mb-3">What{'\u2019'}s Next?</h3>
-                <div className="space-y-3">
-                  <div className="flex items-start space-x-3">
-                    <i className="ri-mail-line text-emerald-700 mt-1"></i>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">Email Confirmation</p>
-                      <p className="text-sm text-gray-600">Sent to {order.email}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start space-x-3">
-                    <i className="ri-box-3-line text-emerald-700 mt-1"></i>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">Processing</p>
-                      <p className="text-sm text-gray-600">We{'\u2019'}ll pack your order today</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start space-x-3">
-                    <i className="ri-truck-line text-emerald-700 mt-1"></i>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">Shipping Updates</p>
-                      <p className="text-sm text-gray-600">Track via email & SMS</p>
-                    </div>
-                  </div>
+              {isPaid && (
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <h3 className="font-semibold text-gray-900 mb-3">What happens next</h3>
+                  <ul className="space-y-3 text-sm text-gray-700">
+                    <li className="flex items-start gap-3">
+                      <i className="ri-message-2-line text-gray-900 mt-0.5" aria-hidden></i>
+                      <span>We send your confirmation to {order.email} and by text to {order.phone}.</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <i className={`${isPickup ? 'ri-store-2-line' : 'ri-truck-line'} text-gray-900 mt-0.5`} aria-hidden></i>
+                      <span>
+                        {isPickup
+                          ? 'We will let you know when your order is ready to collect.'
+                          : method
+                            ? 'We will contact you to agree the delivery cost and time.'
+                            : 'We will contact you about pickup or delivery.'}
+                      </span>
+                    </li>
+                  </ul>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
           <div className="mt-8 text-center">
-            <p className="text-gray-600 mb-4">Need help with your order?</p>
-            <div className="flex flex-wrap justify-center gap-4">
-              <Link href="/contact" className="text-emerald-700 hover:text-emerald-900 font-semibold whitespace-nowrap">
-                <i className="ri-customer-service-line mr-1"></i>
-                Contact Support
-              </Link>
-              <Link href="/account/orders" className="text-emerald-700 hover:text-emerald-900 font-semibold whitespace-nowrap">
-                <i className="ri-question-line mr-1"></i>
-                Order Help
-              </Link>
-            </div>
+            <p className="text-gray-700 mb-4">Need help with your order?</p>
+            <Link href="/contact" className="text-gray-900 underline font-semibold whitespace-nowrap">
+              Contact us
+            </Link>
           </div>
         </div>
       </section>
-
-      <style jsx>{`
-        @keyframes fall {
-          to {
-            transform: translateY(100vh) rotate(360deg);
-            opacity: 0;
-          }
-        }
-        .animate-fall {
-          animation: fall linear forwards;
-        }
-      `}</style>
     </main>
   );
 }

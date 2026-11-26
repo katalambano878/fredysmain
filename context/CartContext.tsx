@@ -28,9 +28,11 @@ export type CartItem = {
 
 type CartContextType = {
     cart: CartItem[];
-    addToCart: (item: CartItem) => void;
-    removeFromCart: (itemId: string, variant?: string) => void;
-    updateQuantity: (itemId: string, quantity: number, variant?: string) => void;
+    /** `openCart: false` adds without sliding the mini cart open (used by Buy Now). */
+    addToCart: (item: CartItem, options?: { openCart?: boolean }) => void;
+    /** Pass `variantId` when the line has one: two sizes can share the same label. */
+    removeFromCart: (itemId: string, variant?: string, variantId?: string) => void;
+    updateQuantity: (itemId: string, quantity: number, variant?: string, variantId?: string) => void;
     clearCart: () => void;
     /** Re-fetch live sale prices for cart lines (variants / products). */
     syncCartPrices: () => Promise<void>;
@@ -107,6 +109,19 @@ export function readStoredCart(): CartItem[] {
     return [];
 }
 
+/** The most of one line a shopper may hold. Preorder and made-to-order lines are not tied to stock. */
+const OPEN_LIMIT = 50;
+export function cartLineLimit(item: Pick<CartItem, 'isPreorder' | 'maxStock'>): number {
+    return item.isPreorder || !(item.maxStock > 0) ? OPEN_LIMIT : item.maxStock;
+}
+
+/** Is this cart line the one meant? The size id decides when there is one; the label is the fallback. */
+function sameLine(item: CartItem, itemId: string, variant?: string, variantId?: string): boolean {
+    if (item.id !== itemId) return false;
+    if (variantId) return item.variantId === variantId;
+    return item.variant === variant;
+}
+
 function mergeAdd(prevCart: CartItem[], newItem: CartItem): CartItem[] {
     const existingItemIndex = prevCart.findIndex(
         (item) =>
@@ -118,10 +133,10 @@ function mergeAdd(prevCart: CartItem[], newItem: CartItem): CartItem[] {
     if (existingItemIndex > -1) {
         const next = [...prevCart];
         const existingItem = next[existingItemIndex];
-        const maxStock = newItem.maxStock || existingItem.maxStock || 50;
+        const maxStock = newItem.maxStock || existingItem.maxStock || OPEN_LIMIT;
         const newQuantity = Math.min(
             existingItem.quantity + newItem.quantity,
-            maxStock
+            cartLineLimit({ ...existingItem, maxStock, isPreorder: newItem.isPreorder ?? existingItem.isPreorder })
         );
         // Always refresh price/stock from the latest add — sale prices change in admin
         next[existingItemIndex] = {
@@ -153,13 +168,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setIsHydrated(true);
     }, []);
 
-    const addToCart = (newItem: CartItem) => {
+    const addToCart = (newItem: CartItem, options?: { openCart?: boolean }) => {
         // Persist BEFORE setState — React may defer the updater until after navigation
         const next = mergeAdd(cartRef.current, newItem);
         cartRef.current = next;
         persistCart(next);
         setCart(next);
-        setIsCartOpen(true);
+        setIsCartOpen(options?.openCart !== false);
         try {
             trackAddToCart({
                 id: newItem.id,
@@ -172,32 +187,25 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const removeFromCart = (itemId: string, variant?: string) => {
-        const next = cartRef.current.filter(
-            (item) => !(item.id === itemId && item.variant === variant)
-        );
+    const removeFromCart = (itemId: string, variant?: string, variantId?: string) => {
+        const next = cartRef.current.filter((item) => !sameLine(item, itemId, variant, variantId));
         cartRef.current = next;
         persistCart(next);
         setCart(next);
     };
 
-    const updateQuantity = (itemId: string, quantity: number, variant?: string) => {
-        const item = cartRef.current.find((i) => i.id === itemId && i.variant === variant);
+    const updateQuantity = (itemId: string, quantity: number, variant?: string, variantId?: string) => {
+        const item = cartRef.current.find((i) => sameLine(i, itemId, variant, variantId));
         if (!item) return;
 
         const minQty = item.moq || 1;
         let next: CartItem[];
         if (quantity < minQty) {
-            next = cartRef.current.filter(
-                (i) => !(i.id === itemId && i.variant === variant)
-            );
+            // Going below the minimum takes the line out. A quantity under the minimum is never stored.
+            next = cartRef.current.filter((i) => i !== item);
         } else {
-            const clampedQty = Math.min(Math.max(quantity, minQty), item.maxStock);
-            next = cartRef.current.map((i) =>
-                i.id === itemId && i.variant === variant
-                    ? { ...i, quantity: clampedQty }
-                    : i
-            );
+            const clampedQty = Math.max(minQty, Math.min(Math.floor(quantity), cartLineLimit(item)));
+            next = cartRef.current.map((i) => (i === item ? { ...i, quantity: clampedQty } : i));
         }
         cartRef.current = next;
         persistCart(next);
@@ -256,10 +264,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
                     }
 
                     if (!(livePrice > 0)) return item;
+                    // A preorder line, or a size that has sold out since it was added, is made to order:
+                    // its limit is not the stock count. Writing 0 here used to make "+" empty the line.
+                    const tiedToStock = !item.isPreorder && Number.isFinite(liveStock) && liveStock > 0;
                     return {
                         ...item,
                         price: livePrice,
-                        maxStock: Number.isFinite(liveStock) && liveStock >= 0 ? liveStock : item.maxStock,
+                        maxStock: tiedToStock ? liveStock : item.maxStock,
                     };
                 } catch {
                     return item;

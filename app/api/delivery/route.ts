@@ -11,6 +11,31 @@ async function getAuthUser(req: NextRequest) {
     return { ...user, role: profile.role, fullName: profile.full_name };
 }
 
+/**
+ * Orders waiting for a rider: paid for, to be delivered to the door, and not already with a rider.
+ * Store-pickup orders never need a rider. The list and its count both come from here, so they agree.
+ */
+async function awaitingDispatch(): Promise<any[]> {
+    const { data: held, error: heldError } = await supabaseAdmin
+        .from('delivery_assignments')
+        .select('order_id')
+        .in('status', ['assigned', 'picked_up', 'in_transit', 'delivered']);
+    if (heldError) throw new Error(heldError.message);
+    const taken = new Set((held || []).map((a: any) => a.order_id));
+
+    const { data: orders, error } = await supabaseAdmin
+        .from('orders')
+        .select('id, order_number, email, phone, shipping_address, shipping_method, total, status, payment_status, created_at')
+        .in('status', ['processing', 'shipped', 'dispatched_to_rider'])
+        .order('created_at', { ascending: true })
+        .limit(1000);
+    if (error) throw new Error(error.message);
+
+    return (orders || []).filter(
+        (o: any) => !taken.has(o.id) && String(o.shipping_method || '').toLowerCase() !== 'pickup'
+    );
+}
+
 // GET /api/delivery — Stats & dashboard data
 export async function GET(req: NextRequest) {
     const user = await getAuthUser(req);
@@ -25,32 +50,43 @@ export async function GET(req: NextRequest) {
             today.setHours(0, 0, 0, 0);
             const todayISO = today.toISOString();
 
-            const [assignmentsRes, ridersRes, todayAssignments, pendingOrders, zonesRes] = await Promise.all([
+            const [assignmentsRes, ridersRes, deliveredToday, failedToday, waiting, zonesRes] = await Promise.all([
                 supabaseAdmin.from('delivery_assignments').select('id, status', { count: 'exact' }),
                 supabaseAdmin.from('riders').select('id, status', { count: 'exact' }),
-                supabaseAdmin.from('delivery_assignments').select('id, status, delivery_fee').gte('assigned_at', todayISO),
-                supabaseAdmin.from('orders')
-                    .select('id', { count: 'exact' })
-                    .in('status', ['processing', 'shipped'])
-                    .not('id', 'in', `(${(await supabaseAdmin.from('delivery_assignments').select('order_id').not('status', 'in', '("failed","returned")')).data?.map(a => a.order_id).join(',') || '00000000-0000-0000-0000-000000000000'})`),
+                // "Today" means the day the parcel was handed over or failed, not the day it was assigned.
+                supabaseAdmin.from('delivery_assignments').select('id, delivery_fee').eq('status', 'delivered').gte('delivered_at', todayISO),
+                supabaseAdmin.from('delivery_assignments').select('id').eq('status', 'failed').gte('failed_at', todayISO),
+                awaitingDispatch(),
                 supabaseAdmin.from('delivery_zones').select('id', { count: 'exact' }).eq('is_active', true),
             ]);
 
+            for (const res of [assignmentsRes, ridersRes, deliveredToday, failedToday, zonesRes]) {
+                if (res.error) throw new Error(res.error.message);
+            }
+
             const allAssignments = assignmentsRes.data || [];
             const allRiders = ridersRes.data || [];
-            const todayData = todayAssignments.data || [];
+            const delivered = deliveredToday.data || [];
+
+            // A rider is out on delivery when they hold a delivery that is still in progress.
+            const busyRiders = new Set(
+                (await supabaseAdmin
+                    .from('delivery_assignments')
+                    .select('rider_id')
+                    .in('status', ['assigned', 'picked_up', 'in_transit'])).data?.map((a: any) => a.rider_id) || []
+            );
 
             const stats = {
                 totalAssignments: allAssignments.length,
-                activeDeliveries: allAssignments.filter(a => ['assigned', 'picked_up', 'in_transit'].includes(a.status)).length,
-                deliveredToday: todayData.filter(a => a.status === 'delivered').length,
-                failedToday: todayData.filter(a => a.status === 'failed').length,
+                activeDeliveries: allAssignments.filter((a: any) => ['assigned', 'picked_up', 'in_transit'].includes(a.status)).length,
+                deliveredToday: delivered.length,
+                failedToday: (failedToday.data || []).length,
                 totalRiders: allRiders.length,
-                activeRiders: allRiders.filter(r => r.status === 'active').length,
-                onDeliveryRiders: allRiders.filter(r => r.status === 'on_delivery').length,
-                pendingOrders: pendingOrders.count || 0,
+                activeRiders: allRiders.filter((r: any) => r.status === 'active').length,
+                onDeliveryRiders: allRiders.filter((r: any) => busyRiders.has(r.id)).length,
+                pendingOrders: waiting.length,
                 activeZones: zonesRes.count || 0,
-                todayRevenue: todayData.filter(a => a.status === 'delivered').reduce((sum, a) => sum + (a.delivery_fee || 0), 0),
+                todayRevenue: delivered.reduce((sum: number, a: any) => sum + (Number(a.delivery_fee) || 0), 0),
             };
 
             return NextResponse.json({ stats });
@@ -71,25 +107,7 @@ export async function GET(req: NextRequest) {
         }
 
         if (action === 'unassigned') {
-            const { data: assignedOrderIds } = await supabaseAdmin
-                .from('delivery_assignments')
-                .select('order_id')
-                .not('status', 'in', '("failed","returned")');
-
-            const excludeIds = (assignedOrderIds || []).map(a => a.order_id);
-
-            let query = supabaseAdmin
-                .from('orders')
-                .select('id, order_number, email, phone, shipping_address, shipping_method, total, status, created_at')
-                .in('status', ['processing', 'shipped', 'dispatched_to_rider'])
-                .order('created_at', { ascending: true });
-
-            if (excludeIds.length > 0) {
-                query = query.not('id', 'in', `(${excludeIds.join(',')})`);
-            }
-
-            const { data } = await query;
-            return NextResponse.json({ orders: data || [] });
+            return NextResponse.json({ orders: await awaitingDispatch() });
         }
 
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

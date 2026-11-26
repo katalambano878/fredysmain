@@ -152,6 +152,18 @@ export async function PUT(
     }
     productData.slug = slugCandidate;
 
+    // The form only knows its own metadata keys. Keep the rest (a switched-off sale price lives there).
+    const { data: current } = await supabaseAdmin
+      .from('products')
+      .select('metadata')
+      .eq('id', productId)
+      .maybeSingle();
+    const currentMeta =
+      current?.metadata && typeof current.metadata === 'object' && !Array.isArray(current.metadata)
+        ? current.metadata
+        : {};
+    productData.metadata = { ...currentMeta, ...(productData.metadata || {}) };
+
     const { error: updateError } = await supabaseAdmin
       .from('products')
       .update(productData)
@@ -167,30 +179,106 @@ export async function PUT(
       return NextResponse.json({ error: copErr?.message || 'Failed to save cost of production' }, { status: 500 });
     }
 
-    // Replace variants
-    await supabaseAdmin.from('product_variants').delete().eq('product_id', productId);
+    // Sizes are updated in place, so each keeps its id. Carts and past orders point at that id,
+    // and a size with order history cannot be deleted: the old delete-and-re-add left a second
+    // copy of every sold size behind on each save.
+    const { data: oldVariants, error: oldVariantsError } = await supabaseAdmin
+      .from('product_variants')
+      .select('id, name, option1, option2, price, compare_at_price, metadata, created_at')
+      .eq('product_id', productId);
+    if (oldVariantsError) {
+      return NextResponse.json({ error: oldVariantsError.message }, { status: 500 });
+    }
+    const variantKey = (name: unknown, option2: unknown) =>
+      `${String(name ?? '').trim().toLowerCase()}|${String(option2 ?? '').trim().toLowerCase()}`;
+    const hasSaleState = (v: any) =>
+      Number(v?.compare_at_price) > Number(v?.price) || Number(v?.metadata?.sale_price) > 0;
+    const newerThan = (a: any, b: any) => String(a?.created_at || '') > String(b?.created_at || '');
 
-    if (variants.length > 0) {
-      const variantInserts = variants.map((v: any, idx: number) => ({
+    // One keeper per size. Where a size exists more than once, keep the copy with a sale, else the newest.
+    const keeperByKey = new Map<string, any>();
+    for (const v of oldVariants || []) {
+      const key = variantKey(v.name || v.option1, v.option2);
+      const current = keeperByKey.get(key);
+      const better =
+        !current ||
+        (hasSaleState(v) && !hasSaleState(current)) ||
+        (hasSaleState(v) === hasSaleState(current) && newerThan(v, current));
+      if (better) keeperByKey.set(key, v);
+    }
+
+    const toUpdate: { id: string; values: Record<string, unknown> }[] = [];
+    const toInsert: Record<string, unknown>[] = [];
+    const usedKeeperIds = new Set<string>();
+    variants.forEach((v: any, idx: number) => {
+      const name = v.name || v.color || 'Default';
+      const option2 = v.color?.trim() || null;
+      const price = parseFloat(v.price) || 0;
+      const candidate = keeperByKey.get(variantKey(name, option2));
+      const old = candidate && !usedKeeperIds.has(candidate.id) ? candidate : null;
+      const oldCompare = Number(old?.compare_at_price) || 0;
+      const keptSalePrice = Number(old?.metadata?.sale_price) || 0;
+      const metadata: Record<string, unknown> = v.colorHex ? { color_hex: v.colorHex } : {};
+      // A switched-off sale price stays while it is still below the price.
+      if (price > 0 && keptSalePrice > 0 && keptSalePrice < price) metadata.sale_price = keptSalePrice;
+      const values = {
         product_id: productId,
-        name: v.name || v.color || 'Default',
+        name,
         sku: v.sku || null,
-        price: parseFloat(v.price) || 0,
+        price,
+        // A live sale keeps its regular price while it is still above the price.
+        compare_at_price: price > 0 && oldCompare > price ? oldCompare : null,
         quantity: parseInt(v.stock) || 0,
         option1: v.name || null,
-        option2: v.color?.trim() || null,
+        option2,
         image_url: v.image_url?.trim() || null,
         sort_order: v.sort_order ?? idx,
-        metadata: v.colorHex ? { color_hex: v.colorHex } : {},
-      }));
-      // Insert in chunks of 100 to avoid payload limits
-      const CHUNK = 100;
-      for (let i = 0; i < variantInserts.length; i += CHUNK) {
-        const chunk = variantInserts.slice(i, i + CHUNK);
-        const { error: varError } = await supabaseAdmin.from('product_variants').insert(chunk);
-        if (varError) {
-          return NextResponse.json({ error: varError.message }, { status: 500 });
-        }
+        metadata,
+      };
+      if (old) {
+        usedKeeperIds.add(old.id);
+        toUpdate.push({ id: old.id, values });
+      } else {
+        toInsert.push(values);
+      }
+    });
+
+    // Everything not kept goes: extra copies of a kept size, and sizes the admin removed.
+    for (const v of oldVariants || []) {
+      if (usedKeeperIds.has(v.id)) continue;
+      const keeper = keeperByKey.get(variantKey(v.name || v.option1, v.option2));
+      const replacement = keeper && usedKeeperIds.has(keeper.id) ? keeper.id : null;
+      // Past orders keep their line (it stores the size name); it now points at the kept copy, or at no size.
+      const { error: orderErr } = await supabaseAdmin
+        .from('order_items')
+        .update({ variant_id: replacement })
+        .eq('variant_id', v.id);
+      if (orderErr) return NextResponse.json({ error: orderErr.message }, { status: 500 });
+      const cartChange = replacement
+        ? supabaseAdmin.from('cart_items').update({ variant_id: replacement }).eq('variant_id', v.id)
+        : supabaseAdmin.from('cart_items').delete().eq('variant_id', v.id);
+      const { error: cartErr } = await cartChange;
+      if (cartErr) return NextResponse.json({ error: cartErr.message }, { status: 500 });
+      const { error: deleteErr } = await supabaseAdmin.from('product_variants').delete().eq('id', v.id);
+      if (deleteErr) return NextResponse.json({ error: deleteErr.message }, { status: 500 });
+    }
+
+    for (const { id, values } of toUpdate) {
+      const { error: updateVariantError } = await supabaseAdmin
+        .from('product_variants')
+        .update({ ...values, updated_at: new Date().toISOString() })
+        .eq('id', id);
+      if (updateVariantError) {
+        return NextResponse.json({ error: updateVariantError.message }, { status: 500 });
+      }
+    }
+
+    // Insert in chunks of 100 to avoid payload limits
+    const CHUNK = 100;
+    for (let i = 0; i < toInsert.length; i += CHUNK) {
+      const { error: varError } = await supabaseAdmin.from('product_variants').insert(toInsert.slice(i, i + CHUNK));
+      if (varError) {
+        return NextResponse.json({ error: varError.message }, { status: 500 });
       }
     }
 
@@ -230,12 +318,26 @@ export async function DELETE(
       );
     }
 
+    // Production logs feed the tailors' pay records and are removed with the product, so a
+    // product that has any is kept. Archiving hides it from the shop without losing them.
+    const { data: productionLogs, error: logsError } = await supabaseAdmin
+      .from('production_logs')
+      .select('id')
+      .eq('product_id', productId)
+      .limit(1);
+    if (!logsError && productionLogs && productionLogs.length > 0) {
+      return NextResponse.json(
+        { error: 'This product has production records. Archive it instead of deleting it.' },
+        { status: 400 }
+      );
+    }
+
     await supabaseAdmin.from('cart_items').delete().eq('product_id', productId);
     await supabaseAdmin.from('wishlist_items').delete().eq('product_id', productId);
 
     const { data: reviews } = await supabaseAdmin.from('reviews').select('id').eq('product_id', productId);
     if (reviews?.length) {
-      const reviewIds = reviews.map((r) => r.id);
+      const reviewIds = reviews.map((r: { id: string }) => r.id);
       await supabaseAdmin.from('review_images').delete().in('review_id', reviewIds);
       await supabaseAdmin.from('reviews').delete().eq('product_id', productId);
     }

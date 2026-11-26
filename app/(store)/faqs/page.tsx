@@ -12,122 +12,89 @@ export default function FAQsPage() {
   const categories = [
     { id: 'all', name: 'All Questions', icon: 'ri-question-line' },
     { id: 'orders', name: 'Orders', icon: 'ri-shopping-bag-line' },
-    { id: 'shipping', name: 'Shipping', icon: 'ri-truck-line' },
+    { id: 'shipping', name: 'Delivery', icon: 'ri-truck-line' },
     { id: 'returns', name: 'Returns', icon: 'ri-arrow-go-back-line' },
-    { id: 'payment', name: 'Payment', icon: 'ri-bank-card-line' },
+    { id: 'payment', name: 'Payment', icon: 'ri-smartphone-line' },
     { id: 'account', name: 'Account', icon: 'ri-user-line' }
   ];
 
+  // Answers describe what the site does today. Anything the shop decides case by case
+  // (returns, delivery cost and timing) points the customer to the team instead of quoting terms.
   const faqs = [
     {
       category: 'orders',
       question: 'How do I place an order?',
-      answer: "Browse our kids ready-to-wear collections, add your selected outfits to cart, proceed to checkout, provide delivery details, choose payment, and confirm your order. You'll receive an order confirmation and updates."
+      answer: 'Choose an outfit, pick the size, and add it to your cart. At checkout, enter your details, choose store pickup or doorstep delivery, and pay with Mobile Money. You get a confirmation by text and email once your payment goes through.'
     },
     {
       category: 'orders',
-      question: 'Can I modify or cancel my order?',
-      answer: "You can request changes within 1 hour of placing your order. Contact support immediately at 024 472 0197 or hello@frebysfashion.com. Once processing starts, changes may be limited."
+      question: 'Can I change or cancel my order?',
+      answer: 'Contact us as soon as you can on 0244720197 or hello@frebysfashion.com and we will tell you what is still possible. The earlier you reach us, the easier it is to change.'
     },
     {
       category: 'orders',
       question: 'How do I track my order?',
-      answer: 'After your order ships, you\'ll receive a tracking number via email and SMS. Visit our Order Tracking page and enter your order number and email address to see real-time updates on your delivery status.'
+      answer: 'Open the Track My Order page and enter your order number and the email address you ordered with.'
+    },
+    {
+      category: 'orders',
+      question: 'What does "Preorder" mean?',
+      answer: 'A preorder outfit is made after you order it. Preorder outfits take 3 to 4 business days to be ready before pickup or delivery.'
     },
     {
       category: 'orders',
       question: 'What if I receive the wrong item?',
-      answer: 'We sincerely apologise if you receive the wrong item. Contact us within 48 hours with photos of the item received. We\'ll arrange for the correct item to be sent immediately and collect the wrong item at no cost to you.'
+      answer: 'We are sorry if that happens. Contact us with your order number and a photo of what you received, and we will put it right.'
     },
     {
       category: 'shipping',
-      question: 'What are your delivery times?',
-      answer: 'Delivery times depend on destination. We ship from Haatso, Accra, Ghana and offer worldwide delivery. Final delivery timelines are shown at checkout and in your order updates.'
+      question: 'How much does delivery cost?',
+      answer: 'Store pickup from our shop in Haatso, Accra is free. For doorstep delivery, we contact you after you order to confirm the cost for your area. Delivery is not charged at checkout.'
     },
     {
       category: 'shipping',
-      question: 'How much does shipping cost?',
-      answer: 'Shipping costs vary by destination and delivery option. You will see the exact shipping fee at checkout before payment.'
+      question: 'How long does delivery take?',
+      answer: 'It depends on where you are. We agree the delivery time with you when we confirm the delivery cost. Preorder outfits need 3 to 4 business days to be made first.'
     },
     {
       category: 'shipping',
-      question: 'Do you ship outside Ghana?',
-      answer: 'Yes. Freby’s Fashion GH offers worldwide delivery from Ghana.'
-    },
-    {
-      category: 'shipping',
-      question: 'What if nobody is home for delivery?',
-      answer: 'Our delivery partner will attempt delivery twice. If unsuccessful, the package will be held at the nearest collection point for 5 days. You\'ll receive SMS and email notifications with collection instructions.'
+      question: 'Do you deliver outside Ghana?',
+      answer: 'Yes. We send orders abroad from Accra. Contact us with your location and we will let you know the options and the cost.'
     },
     {
       category: 'returns',
-      question: 'How fast is delivery?',
-      answer: 'Delivery speed depends on your location. We dispatch from Haatso, Accra, Ghana and share estimated timing during checkout and after order confirmation.'
+      question: 'Can I return or exchange an item?',
+      answer: 'Contact us as soon as you can after you receive your order, with your order number and what is wrong. Our team looks at each request and tells you what we can do. Please keep the item unworn, with its tags, until we have confirmed.'
     },
     {
       category: 'returns',
-      question: 'Which items cannot be returned?',
-      answer: 'Items with clear signs of wear, damage caused after delivery, or custom/personalised outfit alterations may not qualify for return unless there is a manufacturing issue.'
-    },
-    {
-      category: 'returns',
-      question: 'Who pays for return shipping?',
-      answer: 'If you\'re returning due to a defect or our error, we cover return shipping. For change-of-mind returns, customers pay return shipping costs (GHS 15 standard rate). Free shipping on returns for defective items.'
-    },
-    {
-      category: 'returns',
-      question: 'Can I exchange an item instead of returning it?',
-      answer: 'Yes! If you need a different size or colour, select "Exchange" when initiating your return. We\'ll send the replacement as soon as we receive your original item. Exchange shipping is FREE.'
+      question: 'I am not sure which size to order. Can you help?',
+      answer: 'Yes. Message us on WhatsApp before you order and we will help you choose the right size.'
     },
     {
       category: 'payment',
-      question: 'What payment methods do you accept?',
-      answer: 'We accept MTN Mobile Money, Vodafone Cash, AirtelTigo Money, Visa/Mastercard credit and debit cards, and Cash on Delivery (available for orders under GHS 1,000). All payments are processed securely.'
+      question: 'How can I pay?',
+      answer: 'You pay with Mobile Money at checkout. After you place the order you approve the payment on your phone.'
     },
     {
       category: 'payment',
-      question: 'Is it safe to use my credit card on your site?',
-      answer: 'Absolutely. We use industry-standard SSL encryption and partner with secure payment processors (Paystack, Flutterwave). We never store your full card details on our servers. All transactions are PCI-DSS compliant.'
-    },
-    {
-      category: 'payment',
-      question: 'Can I pay in instalments?',
-      answer: 'Installment options depend on available payment providers at checkout. If enabled, options are shown before you complete payment.'
-    },
-    {
-      category: 'payment',
-      question: 'When will my payment be charged?',
-      answer: 'For card and mobile money payments, you\'re charged immediately. For Cash on Delivery, you pay when you receive your order. If an item is out of stock, we\'ll refund you within 24 hours.'
-    },
-    {
-      category: 'payment',
-      question: 'How do refunds work?',
-      answer: 'Refunds are processed to your original payment method within 5-7 business days after we receive and inspect your return. For mobile money refunds, ensure you provide correct details. You\'ll receive confirmation via email.'
+      question: 'When is my order confirmed?',
+      answer: 'Your order is confirmed once your payment goes through. If the payment does not complete, your order is saved and you can pay from the link we send you.'
     },
     {
       category: 'account',
       question: 'Do I need an account to place an order?',
-      answer: 'No, you can checkout as a guest. However, creating an account lets you track orders, save addresses, view purchase history, manage your wishlist, and receive exclusive offers. It only takes 30 seconds to sign up.'
+      answer: 'No. You can check out as a guest. With an account you can see your past orders and save your delivery addresses.'
     },
     {
       category: 'account',
-      question: 'How do I reset my password?',
-      answer: 'Click "Forgot Password" on the login page, enter your email address, and we\'ll send you a reset link. The link is valid for 1 hour. If you don\'t receive it, check your spam folder or contact support.'
+      question: 'I forgot my password. What do I do?',
+      answer: 'Passwords cannot be reset online yet. Message or call us on 0244720197 with the email or phone number on your account and we will help you sign in again.'
     },
     {
       category: 'account',
-      question: 'Can I have multiple delivery addresses?',
-      answer: 'Yes! You can save multiple delivery addresses in your account. During checkout, simply select the address you want to use or add a new one. This is perfect for sending gifts or alternating between work and home.'
-    },
-    {
-      category: 'account',
-      question: 'How do I update my account information?',
-      answer: 'Log in to your account and go to "Account Settings". You can update your name, email, phone number, password, and saved addresses. Changes are saved instantly and you\'ll receive a confirmation email.'
-    },
-    {
-      category: 'account',
-      question: 'What are loyalty points and how do they work?',
-      answer: 'Earn 1 point for every GHS 10 spent. 100 points = GHS 10 discount on your next purchase. Points are automatically added to your account after each order. Check your points balance in your account dashboard.'
+      question: 'Can I save more than one delivery address?',
+      answer: 'Yes. You can save several addresses in your account and choose one at checkout.'
     }
   ];
 
@@ -155,6 +122,7 @@ export default function FAQsPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Search the questions"
               placeholder="Search for answers..."
               className="w-full pl-12 pr-4 py-4 border border-gray-300 rounded-full focus:ring-2 focus:ring-gray-600 focus:border-transparent text-sm shadow-lg"
             />
@@ -216,7 +184,7 @@ export default function FAQsPage() {
           </div>
           <h2 className="text-3xl font-bold text-white mb-4">Still Have Questions?</h2>
           <p className="text-xl text-gray-100 mb-8 leading-relaxed">
-            Our customer service team is ready to help. Contact us and we'll respond within 24 hours.
+            Our team is ready to help. Send us a message or chat with us on WhatsApp.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <Link
@@ -250,9 +218,9 @@ export default function FAQsPage() {
             <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-4">
               <i className="ri-truck-line text-2xl text-gray-900"></i>
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Shipping Policy</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Shipping and delivery</h3>
             <p className="text-gray-600 leading-relaxed">
-              Learn about delivery times, costs, and tracking your orders
+              Store pickup, doorstep delivery and tracking your order
             </p>
           </Link>
 
@@ -260,9 +228,9 @@ export default function FAQsPage() {
             <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-4">
               <i className="ri-arrow-go-back-line text-2xl text-gray-900"></i>
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Delivery Info</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Returns and exchanges</h3>
             <p className="text-gray-600 leading-relaxed">
-              Learn about local and worldwide delivery options.
+              How to ask us about a return or a different size
             </p>
           </Link>
 

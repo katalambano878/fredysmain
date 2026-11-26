@@ -24,8 +24,11 @@ export async function GET(
 
     let query = supabaseAdmin
       .from('products')
+      // Named columns only: `*` also sent the cost price and other internal fields to every visitor.
       .select(`
-        *,
+        id, name, slug, description, short_description, price, compare_at_price, sku, quantity,
+        category_id, status, featured, tags, seo_title, seo_description, rating_avg, review_count,
+        metadata, moq, gender, created_at, updated_at,
         categories(name, slug),
         product_variants(id, name, price, compare_at_price, quantity, option1, option2, image_url, metadata, sort_order),
         product_images(url, position, alt_text, media_type)
@@ -54,6 +57,6 @@ export async function GET(
     });
   } catch (err: any) {
     console.error('[Storefront API] Product by slug error:', err);
-    return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 });
+    return NextResponse.json({ error: 'Could not load this product' }, { status: 500 });
   }
 }

@@ -1,6 +1,8 @@
 import { Resend } from 'resend';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { escapeHtml } from '@/lib/sanitize';
+import { isPlainPostgres } from '@/lib/db/mode';
+import { query } from '@/lib/db/pool';
 
 const resend = new Resend(process.env.RESEND_API_KEY || 'missing_api_key');
 /** Comma-separated list supported, e.g. owner@gmail.com,info@store.com */
@@ -205,7 +207,16 @@ async function sendViaTaysend(to: string, message: string, senderFallback?: stri
 }
 
 export async function sendSMS({
- to, message }: { to: string; message: string }) {
+ to, message: rawMessage }: { to: string; message: string }) {
+    // Plain keyboard characters only. A curly apostrophe or the cedi sign switches the whole
+    // text to a wider encoding (70 characters per part instead of 160), which doubles its cost.
+    const message = String(rawMessage)
+        .replace(/GH₵\s?/g, 'GHS ')
+        .replace(/₵/g, 'GHS ')
+        .replace(/[‘’]/g, "'")
+        .replace(/[“”]/g, '"')
+        .replace(/[–—]/g, '-')
+        .replace(/…/g, '...');
         const viaTaysend = await sendViaTaysend(formatPhoneNumber(to), message);
     if (viaTaysend) return viaTaysend;
 
@@ -231,7 +242,7 @@ export async function sendSMS({
             },
             body: JSON.stringify({
                 type: 1,
-                senderid: process.env.SMS_SENDER_ID || 'Freby’sGH',
+                senderid: process.env.SMS_SENDER_ID || 'FrebysGH',
                 messages: [
                     {
                         recipient: recipient,
@@ -263,6 +274,26 @@ export async function sendSMS({
 export async function sendOrderConfirmation(order: any) {
     const { id, email, phone: orderPhone, shipping_address, total, created_at, order_number, metadata } = order;
 
+    // One confirmation per order. The payment provider's callback and the shopper's return to
+    // the site can both arrive at once; whichever claims the order first sends, the other stops.
+    if (isPlainPostgres() && typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id)) {
+        try {
+            const claimed = await query(
+                `UPDATE orders
+                    SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('confirmation_sent_at', now()::text)
+                  WHERE id = $1 AND NOT (COALESCE(metadata, '{}'::jsonb) ? 'confirmation_sent_at')
+                  RETURNING id`,
+                [id]
+            );
+            if (claimed.rowCount === 0) {
+                console.log(`[Notification] Confirmation already sent for #${order_number || id}, skipping`);
+                return;
+            }
+        } catch (claimError: any) {
+            console.warn('[Notification] Could not record the confirmation claim:', claimError?.message);
+        }
+    }
+
     const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) || 'https://www.frebysfashion.com').replace(/\/+$/, '');
 
     // Build customer name from available sources
@@ -282,13 +313,14 @@ export async function sendOrderConfirmation(order: any) {
         }
         return 'Customer';
     };
-    const name = getName();
+    // Typed by the shopper and used in emails and texts: drop anything that could act as markup.
+    const name = String(getName()).replace(/[<>&"]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Customer';
 
     // Prefer top-level phone, then shipping address phone
     const phone = orderPhone || shipping_address?.phone;
 
     // Get tracking number from metadata
-    const trackingNumber = metadata?.tracking_number || '';
+    const trackingNumber = String(metadata?.tracking_number || '').replace(/[^A-Za-z0-9-]/g, '').slice(0, 40);
     const trackingUrl = `${baseUrl}/order-tracking?order=${order_number || id}`;
 
     console.log(`[Notification] Preparing for Order #${order_number} | Phone: ${phone ? 'Present' : 'Missing'} | Tracking: ${trackingNumber || 'None'}`);
@@ -297,7 +329,7 @@ export async function sendOrderConfirmation(order: any) {
     let shippingNotes: string[] = [];
     let hasPreorderItems = order?.is_preorder === true;
     try {
-        const { data: items } = await supabase
+        const { data: items } = await supabaseAdmin
             .from('order_items')
             .select('product_name, metadata, is_preorder')
             .eq('order_id', id);
@@ -361,7 +393,7 @@ ${emailButton('Track Your Order', trackingUrl)}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9fafb;border-radius:12px;overflow:hidden;margin:16px 0;">
   ${emailInfoRow('Order', `#${order_number || id}`)}
   ${emailInfoRow('Customer', `${name}`)}
-  ${emailInfoRow('Email', email)}
+  ${emailInfoRow('Email', escapeHtml(String(email || '')))}
   ${emailInfoRow('Total', `GH₵${Number(total).toFixed(2)}`)}
   ${trackingNumber ? emailInfoRow('Tracking', trackingNumber) : ''}
 </table>
@@ -423,9 +455,10 @@ export async function sendOrderStatusUpdate(order: any, newStatus: string) {
         }
         return 'Customer';
     };
-    const name = getName();
+    // Typed by the shopper and used in emails and texts: drop anything that could act as markup.
+    const name = String(getName()).replace(/[<>&"]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Customer';
     const phone = orderPhone || shipping_address?.phone;
-    const trackingNumber = metadata?.tracking_number || '';
+    const trackingNumber = String(metadata?.tracking_number || '').replace(/[^A-Za-z0-9-]/g, '').slice(0, 40);
     const trackingUrl = `${baseUrl}/order-tracking?order=${order_number || id}`;
 
     console.log(`[Notification] Status update for Order #${order_number} to ${newStatus} | Tracking: ${trackingNumber}`);
@@ -568,7 +601,8 @@ export async function sendPaymentLink(order: any) {
         }
         return 'Customer';
     };
-    const name = getName();
+    // Typed by the shopper and used in emails and texts: drop anything that could act as markup.
+    const name = String(getName()).replace(/[<>&"]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Customer';
     const phone = orderPhone || shipping_address?.phone;
 
     console.log(`[Notification] Sending payment link for Order #${order_number} | Phone: ${phone ? 'Present' : 'Missing'}`);

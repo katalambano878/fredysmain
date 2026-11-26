@@ -1,6 +1,7 @@
 'use server';
 
 import { verifyAdminToken } from '@/lib/auth';
+import { sendSMS } from '@/lib/notifications';
 
 export async function testSmsAction(phone: string, message: string, authToken: string) {
     // SECURITY: Verify admin authentication before allowing SMS sending
@@ -15,16 +16,6 @@ export async function testSmsAction(phone: string, message: string, authToken: s
     try {
         console.log('Testing SMS to:', phone, '| by user:', auth.user?.email);
 
-        // Moolre SMS API only requires X-API-VASKEY for authentication
-        const smsVasKey = process.env.MOOLRE_SMS_API_KEY;
-
-        if (!smsVasKey) {
-            return {
-                success: false,
-                error: 'Missing MOOLRE_SMS_API_KEY environment variable'
-            };
-        }
-
         // Validate phone input
         if (!phone || typeof phone !== 'string') {
             return { success: false, error: 'Invalid phone number' };
@@ -35,48 +26,21 @@ export async function testSmsAction(phone: string, message: string, authToken: s
             return { success: false, error: 'Invalid or too long message' };
         }
 
-        // Format phone number for Ghana
-        let cleaned = phone.replace(/\D/g, '');
-        if (cleaned.startsWith('0')) {
-            cleaned = '233' + cleaned.slice(1);
-        }
-        if (!cleaned.startsWith('233') && cleaned.length === 9) {
-            cleaned = '233' + cleaned;
-        }
-        const recipient = '+' + cleaned;
+        // Sent the same way as the shop's real texts (the main SMS service first, then the backup),
+        // so a test here shows what customers would actually get. It used to test the backup only.
+        const result: any = await sendSMS({ to: phone, message });
 
-        // Make API call per Moolre documentation
-        const response = await fetch('https://api.moolre.com/open/sms/send', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-VASKEY': smsVasKey
-            },
-            body: JSON.stringify({
-                type: 1,
-                senderid: process.env.SMS_SENDER_ID || 'Freby’sGH',
-                messages: [
-                    {
-                        recipient: recipient,
-                        message: message
-                    }
-                ]
-            })
-        });
-
-        const responseText = await response.text();
-        let result;
-        try {
-            result = JSON.parse(responseText);
-        } catch {
-            result = { rawResponse: responseText };
+        if (!result) {
+            return {
+                success: false,
+                error: 'The text was not sent. No SMS service accepted it: check the SMS balance and settings.',
+            };
         }
 
         return {
             success: result?.status === 1,
             result,
-            formattedPhone: recipient,
-            httpStatus: response.status
+            provider: result?.provider || 'backup SMS service',
         };
     } catch (error: any) {
         // SECURITY: Don't expose stack traces

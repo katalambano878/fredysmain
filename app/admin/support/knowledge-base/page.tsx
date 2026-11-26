@@ -12,6 +12,7 @@ export default function KnowledgeBasePage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [showModal, setShowModal] = useState(searchParams.get('new') === '1');
   const [editingArticle, setEditingArticle] = useState<any>(null);
+  const [notice, setNotice] = useState('');
 
   const fetchArticles = useCallback(async (searchTerm: string, category: string) => {
     setLoading(true);
@@ -21,11 +22,14 @@ export default function KnowledgeBasePage() {
       if (searchTerm) params.set('search', searchTerm);
       if (category) params.set('category', category);
       const res = await fetchWithTimeout(`/api/support/knowledge-base?${params}`, { timeoutMs: 15_000 });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `The articles could not load (${res.status}).`);
       setArticles(data.data || []);
+      setNotice('');
     } catch (e) {
       console.error('[Knowledge base]', e);
       setArticles([]);
+      setNotice(e instanceof Error ? e.message : 'The articles could not load.');
     } finally {
       setLoading(false);
     }
@@ -41,16 +45,24 @@ export default function KnowledgeBasePage() {
 
   async function deleteArticle(id: string) {
     if (!confirm('Delete this article?')) return;
-    await fetch(`/api/support/knowledge-base?id=${id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/support/knowledge-base?id=${id}`, { method: 'DELETE' }).catch(() => null);
+    if (!res || !res.ok) {
+      setNotice('The article was not deleted. Try again.');
+      return;
+    }
     fetchArticles(search, categoryFilter);
   }
 
   async function togglePublish(article: any) {
-    await fetch('/api/support/knowledge-base', {
+    const res = await fetch('/api/support/knowledge-base', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: article.id, is_published: !article.is_published }),
-    });
+    }).catch(() => null);
+    if (!res || !res.ok) {
+      setNotice('That change was not saved. Try again.');
+      return;
+    }
     fetchArticles(search, categoryFilter);
   }
 
@@ -59,6 +71,9 @@ export default function KnowledgeBasePage() {
 
   return (
     <div className="space-y-6">
+      {notice && (
+        <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3">{notice}</p>
+      )}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
@@ -157,22 +172,29 @@ function ArticleModal({ article, onClose, onSaved }: { article: any; onClose: ()
     is_published: article?.is_published ?? true,
   });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.title || !form.content) return;
+    if (!form.title || !form.content || saving) return;
     setSaving(true);
+    setError('');
     const payload = {
       ...form,
       tags: form.tags.split(',').map((t: string) => t.trim()).filter(Boolean),
       ...(article ? { id: article.id } : {}),
     };
-    await fetch('/api/support/knowledge-base', {
+    const res = await fetch('/api/support/knowledge-base', {
       method: article ? 'PATCH' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-    });
+    }).catch(() => null);
     setSaving(false);
+    if (!res || !res.ok) {
+      const json = res ? await res.json().catch(() => ({})) : {};
+      setError(json?.error || 'The article was not saved. Try again.');
+      return;
+    }
     onSaved();
     onClose();
   }
@@ -212,6 +234,9 @@ function ArticleModal({ article, onClose, onSaved }: { article: any; onClose: ()
               className="rounded border-gray-300 text-gray-700 focus:ring-gray-600" />
             Published (AI can use this for answers)
           </label>
+          {error && (
+            <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+          )}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
             <button type="submit" disabled={saving} className="px-4 py-2 text-sm bg-gray-700 text-white rounded-lg hover:bg-gray-900 disabled:opacity-50">

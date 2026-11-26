@@ -81,6 +81,9 @@ function variantLabelCompare(a: string, b: string): number {
     return a.localeCompare(b);
 }
 
+/** The most products the list API returns in one go. */
+const INVENTORY_LIMIT = 2000;
+
 export default function InventoryManagementPage() {
     const [products, setProducts] = useState<ProductRow[]>([]);
     const [loading, setLoading] = useState(true);
@@ -104,7 +107,8 @@ export default function InventoryManagementPage() {
         try {
             setLoading(true);
             setError(null);
-            const res = await fetchWithTimeout('/api/admin/products?fields=inventory&limit=500', {
+            // The list API returns at most 2,000 products; a note shows if the shop ever has more than that.
+            const res = await fetchWithTimeout(`/api/admin/products?fields=inventory&limit=${INVENTORY_LIMIT}`, {
                 credentials: 'include',
                 timeoutMs: 25_000,
             });
@@ -123,7 +127,8 @@ export default function InventoryManagementPage() {
                         option1: v.option1 ?? null,
                         option2: v.option2 ?? null,
                         quantity: Number(v.quantity ?? 0) || 0,
-                        price: Number(v.price ?? p.price ?? 0) || 0,
+                        // A size with no price of its own sells at the product price.
+                        price: Number(v.price) > 0 ? Number(v.price) : Number(p.price ?? 0) || 0,
                     }));
                 return {
                     id: p.id,
@@ -151,6 +156,12 @@ export default function InventoryManagementPage() {
     // ─── Derived: aggregates and option lists ──────────────────────────────
 
     /** A product's effective stock: sum of variants if any, else product.quantity */
+    /** What the stock on hand would sell for: each size's quantity at that size's price. */
+    function retailValueOf(p: ProductRow): number {
+        if (p.variants.length === 0) return p.productQuantity * p.price;
+        return p.variants.reduce((sum, v) => sum + v.quantity * v.price, 0);
+    }
+
     function effectiveStock(p: ProductRow): number {
         if (p.variants.length === 0) return p.productQuantity;
         return p.variants.reduce((s, v) => s + v.quantity, 0);
@@ -255,7 +266,7 @@ export default function InventoryManagementPage() {
         scopedProducts.forEach((p) => {
             const stock = effectiveStock(p);
             totalUnits += stock;
-            totalRetailValue += stock * p.price;
+            totalRetailValue += retailValueOf(p);
             const status = classifyStock(stock);
             if (status === 'low') lowStockProducts += 1;
             else if (status === 'out') outOfStockProducts += 1;
@@ -307,11 +318,12 @@ export default function InventoryManagementPage() {
     }
 
     function toggleAllProducts() {
-        if (selectedProducts.length === filteredProducts.length) setSelectedProducts([]);
-        else setSelectedProducts(filteredProducts.map((p) => p.id));
+        const shown = filteredProducts.map((p) => p.id);
+        if (shown.length > 0 && shown.every((id) => selectedProducts.includes(id))) setSelectedProducts([]);
+        else setSelectedProducts(shown);
     }
 
-    function handleExportCSV() {
+    function handleExportCSV(only?: string[]) {
         const header = [
             'Product',
             'SKU',
@@ -325,7 +337,8 @@ export default function InventoryManagementPage() {
             'Status',
         ];
         const rows: string[][] = [];
-        filteredProducts.forEach((p) => {
+        const wanted = only && only.length ? new Set(only) : null;
+        filteredProducts.filter((p) => !wanted || wanted.has(p.id)).forEach((p) => {
             if (p.variants.length === 0) {
                 const stock = p.productQuantity;
                 rows.push([
@@ -605,6 +618,11 @@ export default function InventoryManagementPage() {
                                 Showing <span className="font-semibold text-gray-900">{filteredProducts.length}</span> of{' '}
                                 <span className="font-semibold text-gray-900">{scopedProducts.length}</span> products
                             </span>
+                            {products.length >= INVENTORY_LIMIT && (
+                                <span className="text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
+                                    Only the first {INVENTORY_LIMIT.toLocaleString()} active products are loaded, so totals here are incomplete.
+                                </span>
+                            )}
                             {activeFilterCount > 0 && (
                                 <button onClick={clearFilters} className="text-xs text-gray-700 hover:text-gray-900 underline">
                                     Clear filters
@@ -627,7 +645,7 @@ export default function InventoryManagementPage() {
                                 Collapse all
                             </button>
                             <button
-                                onClick={handleExportCSV}
+                                onClick={() => handleExportCSV()}
                                 className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 whitespace-nowrap"
                             >
                                 <i className="ri-download-line" />
@@ -644,6 +662,12 @@ export default function InventoryManagementPage() {
                             {selectedProducts.length} product{selectedProducts.length === 1 ? '' : 's'} selected
                         </p>
                         <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => handleExportCSV(selectedProducts)}
+                                className="px-4 py-2 bg-white text-gray-900 rounded-lg text-sm font-semibold hover:bg-gray-100 transition-colors"
+                            >
+                                Export selected
+                            </button>
                             <button
                                 onClick={() => setSelectedProducts([])}
                                 className="text-sm text-gray-200 hover:text-white"
@@ -708,7 +732,7 @@ export default function InventoryManagementPage() {
                                     filteredProducts.map((p) => {
                                         const stock = effectiveStock(p);
                                         const status = classifyStock(stock);
-                                        const retailValue = stock * p.price;
+                                        const retailValue = retailValueOf(p);
                                         const variantCount = p.variants.length;
                                         const isOpen = !!expanded[p.id];
 

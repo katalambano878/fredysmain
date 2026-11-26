@@ -15,9 +15,25 @@ interface OrderSummaryProps {
   shipping: number;
   tax: number;
   total: number;
+  /** Coupon discount already worked out by the server. */
+  discount?: number;
+  couponCode?: string;
+  /** 'pickup' or 'doorstep': decides what the delivery line says. */
+  deliveryMethod?: string;
+  /** Extra controls under the totals, such as the coupon box. */
+  children?: React.ReactNode;
 }
 
-export default function OrderSummary({ items, subtotal, shipping, tax, total }: OrderSummaryProps) {
+export default function OrderSummary({
+  items,
+  subtotal,
+  shipping,
+  total,
+  discount = 0,
+  couponCode,
+  deliveryMethod,
+  children,
+}: OrderSummaryProps) {
   return (
     <div className="bg-white rounded-xl shadow-sm p-6 sticky top-4">
       <h2 className="text-xl font-bold text-gray-900 mb-6">Order Summary</h2>
@@ -49,10 +65,20 @@ export default function OrderSummary({ items, subtotal, shipping, tax, total }: 
           <span>Subtotal</span>
           <span className="font-semibold">{moneyLabel(subtotal)}</span>
         </div>
-        <div className="flex justify-between text-gray-700">
-          <span>Shipping</span>
-          <span className="font-semibold">
-            {shipping === 0 ? 'FREE' : moneyLabel(shipping)}
+        {discount > 0 && (
+          <div className="flex justify-between text-gray-900">
+            <span>Coupon{couponCode ? ` (${couponCode})` : ''}</span>
+            <span className="font-semibold">-{moneyLabel(discount)}</span>
+          </div>
+        )}
+        <div className="flex justify-between gap-4 text-gray-700">
+          <span>Delivery</span>
+          <span className="font-semibold text-right">
+            {shipping > 0
+              ? moneyLabel(shipping)
+              : deliveryMethod === 'doorstep'
+                ? 'Cost confirmed after you order'
+                : 'Free store pickup'}
           </span>
         </div>
 
@@ -64,6 +90,8 @@ export default function OrderSummary({ items, subtotal, shipping, tax, total }: 
           <span className="text-2xl font-bold text-gray-900">{moneyLabel(total)}</span>
         </div>
       </div>
+
+      {children && <div className="mt-6">{children}</div>}
 
       <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
         <div className="flex items-center space-x-2 text-gray-800">

@@ -13,6 +13,8 @@ export type WishlistItem = {
     badge?: string;
     inStock: boolean;
     slug: string;
+    /** True when the shopper picks a size on the product page (price shown is then the lowest size price). */
+    hasVariants?: boolean;
 };
 
 type WishlistContextType = {

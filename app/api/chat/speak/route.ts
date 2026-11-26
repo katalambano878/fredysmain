@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
+import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limit';
 
 const groqKey = process.env.GROQ_API_KEY;
 
 export async function POST(request: Request) {
   if (!groqKey) {
     return NextResponse.json({ error: 'Text-to-speech not configured' }, { status: 500 });
+  }
+  // This calls a paid service, so each visitor gets a limited number of requests.
+  if (!checkRateLimit(`chat-speak:${getClientIdentifier(request)}`, { maxRequests: 20, windowSeconds: 300 }).success) {
+    return NextResponse.json({ error: 'Too many requests. Try again in a few minutes.' }, { status: 429 });
   }
 
   try {

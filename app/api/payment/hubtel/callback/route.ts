@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { sendOrderConfirmation } from '@/lib/notifications';
+import { mergeOrderMetadata } from '@/lib/order-metadata';
+import { referenceBelongsToOrder } from '@/lib/payment-refs';
 import { fireMetaPurchaseForOrder } from '@/lib/meta-purchase';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import {
@@ -117,19 +119,21 @@ export async function POST(req: Request) {
         }
 
         if (!looksSuccessful) {
+            // This address is public, so a "failed" notice is only recorded for a payment this shop started.
+            if (!(await referenceBelongsToOrder(rawClientReference, existingOrder))) {
+                await markCallbackProcessed(callbackEvent.eventId, 'ignored', 'Unknown payment reference');
+                return NextResponse.json({ success: false, message: 'Unknown payment reference' }, { status: 400 });
+            }
             console.log('[Hubtel Callback] Recording failure for', merchantOrderRef);
-            await supabaseAdmin
-                .from('orders')
-                .update({
-                    payment_status: 'failed',
-                    metadata: {
-                        ...(existingOrder.metadata || {}),
-                        hubtel_checkout_id: checkoutId || null,
-                        hubtel_response_code: String(responseCode || ''),
-                        failure_reason: data.Description || body.Message || 'Payment failed',
-                    },
-                })
-                .eq('order_number', merchantOrderRef);
+            await mergeOrderMetadata(
+                { id: existingOrder.id },
+                {
+                    hubtel_checkout_id: checkoutId || null,
+                    hubtel_response_code: String(responseCode || '').slice(0, 40),
+                    failure_reason: String(data.Description || body.Message || 'Payment failed').slice(0, 300),
+                },
+                { payment_status: 'failed', onlyIfNotPaid: true }
+            );
 
             await markCallbackProcessed(
                 callbackEvent.eventId,

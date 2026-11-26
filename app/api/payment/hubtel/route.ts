@@ -1,3 +1,4 @@
+import { findOutOfStock } from '@/lib/order-stock';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const { orderId, customerEmail, redirectUrl } = body;
+        const { orderId, customerEmail } = body;
 
         if (!orderId || typeof orderId !== 'string') {
             return NextResponse.json(
@@ -53,7 +54,7 @@ export async function POST(req: Request) {
 
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId);
         const orderSelect =
-            'id, order_number, total, email, phone, payment_status, shipping_address, metadata, order_items(quantity, product_id, is_preorder, metadata, products(name, quantity, status))';
+            'id, order_number, total, email, phone, payment_status, shipping_address, metadata, order_items(quantity, product_id, product_name, variant_name, variant_id, is_preorder, metadata)';
         const query = supabaseAdmin.from('orders').select(orderSelect);
 
         const { data: order, error: orderError } = isUUID
@@ -72,32 +73,11 @@ export async function POST(req: Request) {
             );
         }
 
-        const orderItems = (order as any).order_items as Array<{
-            quantity: number;
-            product_id: string;
-            is_preorder?: boolean;
-            metadata?: { is_preorder?: boolean };
-            products: { name: string; quantity: number; status: string } | null;
-        }> | null;
+        const orderItems = (order as any).order_items as any[] | null;
 
         if (orderItems && orderItems.length > 0) {
-            const outOfStock: string[] = [];
-            for (const item of orderItems) {
-                const product = item.products;
-                if (!product) continue;
-                const isPreorder =
-                    item.is_preorder === true || item.metadata?.is_preorder === true;
-                if (isPreorder) continue;
-                if (product.status && product.status !== 'active') {
-                    outOfStock.push(`${product.name} is no longer available`);
-                } else if (product.quantity < item.quantity) {
-                    outOfStock.push(
-                        product.quantity === 0
-                            ? `${product.name} is out of stock`
-                            : `${product.name} — only ${product.quantity} left (you ordered ${item.quantity})`,
-                    );
-                }
-            }
+            // Counted on the size that was ordered, not on the product row.
+            const outOfStock = await findOutOfStock(orderItems);
             if (outOfStock.length > 0) {
                 return NextResponse.json(
                     {
@@ -127,13 +107,12 @@ export async function POST(req: Request) {
             hubtel_initiated_at: new Date().toISOString(),
         };
 
-        supabaseAdmin
+        // Saved before the shopper is sent to Hubtel, so a callback can never arrive first and be overwritten.
+        const { error: metadataError } = await supabaseAdmin
             .from('orders')
             .update({ metadata: persistedMetadata })
-            .eq('id', order.id)
-            .then(({ error }) => {
-                if (error) console.warn('[Hubtel] Metadata update failed:', error.message);
-            });
+            .eq('id', order.id);
+        if (metadataError) console.warn('[Hubtel] Metadata update failed:', metadataError.message);
 
         const requestUrl = new URL(req.url);
         const publicBaseUrl = (process.env.NEXT_PUBLIC_APP_URL || requestUrl.origin).replace(/\/+$/, '');
@@ -142,14 +121,11 @@ export async function POST(req: Request) {
             String(customerEmail || order.email || '').trim().toLowerCase()
         );
         const defaultRedirectUrl = `${publicBaseUrl}/order-success?order=${encodeURIComponent(orderRef)}&payment_success=true${successEmail ? `&email=${successEmail}` : ''}`;
-        const allowedPrefixes = ['https://'];
-        const safeRedirectUrl =
-            typeof redirectUrl === 'string' &&
-            allowedPrefixes.some((prefix) => redirectUrl.startsWith(prefix))
-                ? redirectUrl
-                : defaultRedirectUrl;
+        // The return address is always this shop. A caller-supplied address could send shoppers anywhere.
+        const safeRedirectUrl = defaultRedirectUrl;
 
-        const cancellationUrl = `${publicBaseUrl}/pay/${orderRef}?cancelled=true`;
+        // By order id: the pay page can open that without asking for an email, so "cancel" lands on a page that works.
+        const cancellationUrl = `${publicBaseUrl}/pay/${order.id}?cancelled=true`;
         const shipping = (order.shipping_address as any) || {};
         const customerName =
             [shipping.firstName, shipping.lastName].filter(Boolean).join(' ').trim() ||

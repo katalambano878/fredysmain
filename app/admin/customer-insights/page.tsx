@@ -18,10 +18,14 @@ export default function CustomerInsightsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  // True only until the first answer arrives. Later searches keep the page (and the search box) in place.
+  const [firstLoad, setFirstLoad] = useState(true);
+  const [matching, setMatching] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Statistics
   const [stats, setStats] = useState({
+    total: 0,
     vip: 0,
     returning: 0,
     new: 0,
@@ -53,7 +57,9 @@ export default function CustomerInsightsPage() {
         throw new Error(json?.error?.message || json?.error || 'Failed to load insights');
       }
       setCustomers(Array.isArray(json.customers) ? json.customers : []);
+      setMatching(Number(json.matching) || 0);
       setStats({
+        total: Number(json.stats?.total) || 0,
         vip: Number(json.stats?.vip) || 0,
         returning: Number(json.stats?.returning) || 0,
         new: Number(json.stats?.new) || 0,
@@ -66,6 +72,7 @@ export default function CustomerInsightsPage() {
       setCustomers([]);
     } finally {
       setLoading(false);
+      setFirstLoad(false);
     }
   }, [selectedSegment, debouncedSearch]);
 
@@ -104,9 +111,38 @@ export default function CustomerInsightsPage() {
     return badges[risk] || 'bg-gray-100';
   };
 
-  if (loading) return <div className="p-8 text-center text-gray-500">Loading Insights...</div>;
+  if (firstLoad) return <div className="p-8 text-center text-gray-500">Loading Insights...</div>;
 
-  if (loadError) {
+  /** Download the customers shown as a spreadsheet file. */
+  const exportList = () => {
+    const quote = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const lines = [
+      ['Name', 'Email', 'Phone', 'Segment', 'Orders', 'Total paid (GHS)', 'Average order (GHS)', 'Last order', 'Joined'].map(quote).join(','),
+      ...customers.map((c) =>
+        [
+          c.name,
+          c.email,
+          c.phone,
+          getSegmentLabel(c.segment),
+          c.orders,
+          Number(c.totalSpent).toFixed(2),
+          Number(c.avgOrderValue).toFixed(2),
+          c.lastOrder ? String(c.lastOrder).slice(0, 10) : '',
+          c.joinDate ? String(c.joinDate).slice(0, 10) : '',
+        ]
+          .map(quote)
+          .join(',')
+      ),
+    ];
+    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `customer-insights-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (loadError && customers.length === 0 && stats.total === 0) {
     return (
       <div className="p-8 max-w-lg mx-auto text-center space-y-4">
         <p className="text-gray-900 font-semibold">Customer insights unavailable</p>
@@ -131,7 +167,7 @@ export default function CustomerInsightsPage() {
             <p className="text-gray-600 mt-1 md:mt-2 text-sm md:text-base">Deep dive into customer behavior and lifetime value</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
-            <button className="border-2 border-gray-300 hover:border-gray-400 text-gray-700 px-6 py-3 rounded-lg font-semibold transition-colors whitespace-nowrap flex items-center justify-center">
+            <button onClick={exportList} disabled={customers.length === 0} className="disabled:opacity-50 disabled:cursor-not-allowed border-2 border-gray-300 hover:border-gray-400 text-gray-700 px-6 py-3 rounded-lg font-semibold transition-colors whitespace-nowrap flex items-center justify-center">
               <i className="ri-download-line mr-2"></i>
               Export List
             </button>
@@ -197,7 +233,8 @@ export default function CustomerInsightsPage() {
                 <i className="ri-search-line absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-xl"></i>
                 <input
                   type="text"
-                  placeholder="Search customers by name or email..."
+                  placeholder="Search by name, email or phone..."
+                  aria-label="Search customers"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-600 focus:border-gray-600 text-sm"
@@ -207,7 +244,7 @@ export default function CustomerInsightsPage() {
 
             <div className="flex flex-wrap gap-2 bg-gray-100 rounded-lg p-1">
               {[
-                { value: 'all', label: 'All', count: customers.length },
+                { value: 'all', label: 'All', count: stats.total },
                 { value: 'vip', label: 'VIP', count: stats.vip },
                 { value: 'returning', label: 'Returning', count: stats.returning },
                 { value: 'new', label: 'New', count: stats.new },
@@ -228,7 +265,17 @@ export default function CustomerInsightsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6">
+        <p className="text-sm text-gray-600 mb-3" aria-live="polite">
+          {loading
+            ? 'Updating...'
+            : loadError
+              ? `Could not update: ${loadError}`
+              : matching > customers.length
+                ? `Showing the top ${customers.length} of ${matching} customers by amount paid.`
+                : `${matching} customer${matching === 1 ? '' : 's'}`}
+        </p>
+
+        <div className={`grid grid-cols-1 gap-6 ${loading ? 'opacity-60' : ''}`}>
           {filteredCustomers.length === 0 ? (
             <div className="text-center py-12 bg-white rounded-xl">
               <p className="text-gray-500">No customers found matching this criteria.</p>
@@ -244,24 +291,30 @@ export default function CustomerInsightsPage() {
                     <div>
                       <h3 className="text-xl font-bold text-gray-900">{customer.name}</h3>
                       <div className="flex items-center space-x-3 mt-1 text-sm text-gray-600">
-                        <span className="flex items-center">
-                          <i className="ri-mail-line mr-1"></i>
-                          {customer.email}
-                        </span>
-                        <span className="flex items-center">
-                          <i className="ri-phone-line mr-1"></i>
-                          {customer.phone}
-                        </span>
+                        {customer.email && (
+                          <span className="flex items-center">
+                            <i className="ri-mail-line mr-1" aria-hidden></i>
+                            {customer.email}
+                          </span>
+                        )}
+                        {customer.phone && (
+                          <span className="flex items-center">
+                            <i className="ri-phone-line mr-1" aria-hidden></i>
+                            {customer.phone}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center space-x-2 mt-3">
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${getSegmentBadge(customer.segment)} whitespace-nowrap`}>
                           {getSegmentLabel(customer.segment)}
                         </span>
-                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${getRiskBadge(customer.riskLevel)} whitespace-nowrap`}>
-                          {customer.riskLevel === 'low' && 'Low Risk'}
-                          {customer.riskLevel === 'medium' && 'Medium Risk'}
-                          {customer.riskLevel === 'high' && 'High Risk'}
-                        </span>
+                        {customer.riskLevel && (
+                          <span className={`px-3 py-1 rounded-full text-sm font-medium ${getRiskBadge(customer.riskLevel)} whitespace-nowrap`}>
+                            {customer.riskLevel === 'low' && 'Ordered in the last 60 days'}
+                            {customer.riskLevel === 'medium' && 'No order for 60+ days'}
+                            {customer.riskLevel === 'high' && 'No order for 120+ days'}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -272,7 +325,7 @@ export default function CustomerInsightsPage() {
 
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
                   <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-sm text-gray-600 mb-1">Total Spent</p>
+                    <p className="text-sm text-gray-600 mb-1">Total Paid</p>
                     <p className="text-2xl font-bold text-gray-900">{formatCurrency(customer.totalSpent)}</p>
                   </div>
                   <div className="bg-gray-50 rounded-lg p-4">
@@ -288,29 +341,24 @@ export default function CustomerInsightsPage() {
                     <p className="text-2xl font-bold text-gray-900">{formatCurrency(customer.lifetimeValue)}</p>
                   </div>
                   <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-sm text-gray-600 mb-1">Engagement</p>
-                    <div className="flex items-center space-x-2">
-                      <div className="flex-1 bg-gray-200 rounded-full h-2">
-                        <div
-                          className={`h-2 rounded-full ${customer.engagementScore >= 80 ? 'bg-gray-700' :
-                            customer.engagementScore >= 60 ? 'bg-blue-600' :
-                              customer.engagementScore >= 40 ? 'bg-amber-600' : 'bg-red-600'
-                            }`}
-                          style={{ width: `${customer.engagementScore}%` }}
-                        ></div>
-                      </div>
-                      <span className="text-sm font-bold text-gray-900">{customer.engagementScore}%</span>
-                    </div>
+                    <p className="text-sm text-gray-600 mb-1">Last order</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {customer.daysSinceLastOrder == null
+                        ? 'Never'
+                        : customer.daysSinceLastOrder === 0
+                          ? 'Today'
+                          : `${customer.daysSinceLastOrder} day${customer.daysSinceLastOrder === 1 ? '' : 's'} ago`}
+                    </p>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-4 border-t border-gray-200">
                   <div className="flex items-center space-x-6 text-sm text-gray-600">
                     <span>
-                      <span className="font-medium">Joined:</span> {new Date(customer.joinDate).toLocaleDateString('en-GB')}
+                      <span className="font-medium">First seen:</span> {customer.joinDate ? new Date(customer.joinDate).toLocaleDateString('en-GB') : 'Unknown'}
                     </span>
                     <span>
-                      <span className="font-medium">Last Order:</span> {new Date(customer.lastOrder).toLocaleDateString('en-GB')}
+                      <span className="font-medium">Last Order:</span> {customer.lastOrder ? new Date(customer.lastOrder).toLocaleDateString('en-GB') : 'Never'}
                     </span>
                   </div>
                 </div>

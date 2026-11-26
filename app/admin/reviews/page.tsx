@@ -8,6 +8,8 @@ export default function AdminReviewsPage() {
   const [selectedReviews, setSelectedReviews] = useState<string[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchReviews();
@@ -27,10 +29,10 @@ export default function AdminReviewsPage() {
         .order('created_at', { ascending: false });
 
       if (error) {
-        // Graceful fallback if table doesn't exist or permissions fail
         console.warn('Error fetching reviews:', error);
-        // setReviews([]); // Keep empty
+        setLoadError('The reviews could not load. Refresh the page to try again.');
       } else if (data) {
+        setLoadError('');
         const formatted = data.map((r: any) => ({
           id: r.id,
           customer: {
@@ -46,13 +48,14 @@ export default function AdminReviewsPage() {
           title: r.title,
           comment: r.content,
           date: new Date(r.created_at).toLocaleDateString(),
-          status: r.status || 'Pending',
-          helpful: r.helpful || 0
+          status: String(r.status || 'pending').toLowerCase(),
+          helpful: r.helpful_votes || 0
         }));
         setReviews(formatted);
       }
     } catch (error) {
       console.error('Error fetching reviews:', error);
+      setLoadError('The reviews could not load. Check your connection and refresh.');
     } finally {
       setLoading(false);
     }
@@ -70,20 +73,20 @@ export default function AdminReviewsPage() {
   };
 
   const filteredReviews = reviews.filter(r =>
-    statusFilter === 'all' || r.status.toLowerCase() === statusFilter
+    statusFilter === 'all' || r.status === statusFilter
   );
 
   const stats = {
     total: reviews.length,
-    pending: reviews.filter(r => r.status.toLowerCase() === 'pending').length,
-    approved: reviews.filter(r => r.status.toLowerCase() === 'approved').length,
-    rejected: reviews.filter(r => r.status.toLowerCase() === 'rejected').length
+    pending: reviews.filter(r => r.status === 'pending').length,
+    approved: reviews.filter(r => r.status === 'approved').length,
+    rejected: reviews.filter(r => r.status === 'rejected').length
   };
 
   const statusColors: any = {
-    'Pending': 'bg-amber-100 text-amber-700',
-    'Approved': 'bg-gray-100 text-gray-900',
-    'Rejected': 'bg-red-100 text-red-700'
+    pending: 'bg-amber-100 text-amber-800',
+    approved: 'bg-green-100 text-green-800',
+    rejected: 'bg-red-100 text-red-700'
   };
 
   const handleSelectAll = () => {
@@ -103,11 +106,13 @@ export default function AdminReviewsPage() {
   };
 
   const handleBulkAction = async (action: string) => {
-    if (selectedReviews.length === 0) return;
+    if (selectedReviews.length === 0 || saving) return;
+    setSaving(true);
     try {
+      // The database stores the status in lowercase; a capital letter made every update fail.
       let newStatus = '';
-      if (action === 'Approve') newStatus = 'Approved';
-      if (action === 'Reject') newStatus = 'Rejected';
+      if (action === 'Approve') newStatus = 'approved';
+      if (action === 'Reject') newStatus = 'rejected';
 
       if (newStatus) {
         const { error } = await supabase
@@ -121,7 +126,9 @@ export default function AdminReviewsPage() {
       }
     } catch (err) {
       console.error('Error updating reviews', err);
-      alert('Failed to update reviews. Functionality might be limited.');
+      alert('The reviews were not updated. Try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -242,6 +249,13 @@ export default function AdminReviewsPage() {
             <tbody>
               {loading ? (
                 <tr><td colSpan={6} className="p-8 text-center text-gray-500">Loading reviews...</td></tr>
+              ) : loadError ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-red-700">
+                    {loadError}{' '}
+                    <button onClick={fetchReviews} className="font-semibold underline text-gray-900">Try again</button>
+                  </td>
+                </tr>
               ) : filteredReviews.length === 0 ? (
                 <tr><td colSpan={6} className="p-8 text-center text-gray-500">No reviews found in this category.</td></tr>
               ) : (
@@ -286,7 +300,7 @@ export default function AdminReviewsPage() {
                     <td className="py-4 px-4 text-sm text-gray-600 whitespace-nowrap">{review.date}</td>
                     <td className="py-4 px-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${statusColors[review.status] || 'bg-gray-100'}`}>
-                        {review.status}
+                        {review.status.charAt(0).toUpperCase() + review.status.slice(1)}
                       </span>
                     </td>
                   </tr>

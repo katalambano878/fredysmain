@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useCart } from '@/context/CartContext';
+import { cartLineLimit, useCart } from '@/context/CartContext';
 import { moneyLabel } from '@/lib/format-money';
 
 interface MiniCartProps {
@@ -71,9 +71,10 @@ export default function MiniCart({ isOpen, onClose }: MiniCartProps) {
           </h2>
           <button
             onClick={onClose}
+            aria-label="Close cart"
             className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-full transition-colors cursor-pointer"
           >
-            <i className="ri-close-line text-2xl text-gray-700"></i>
+            <i className="ri-close-line text-2xl text-gray-700" aria-hidden></i>
           </button>
         </div>
 
@@ -97,7 +98,7 @@ export default function MiniCart({ isOpen, onClose }: MiniCartProps) {
             <div className="flex-1 overflow-y-auto p-6">
               <div className="space-y-4">
                 {cart.map((item) => (
-                  <div key={`${item.id}-${item.variant}`} className="flex space-x-4 bg-gray-50 rounded-lg p-4">
+                  <div key={`${item.id}-${item.variantId || item.variant || 'novar'}`} className="flex space-x-4 bg-gray-50 rounded-lg p-4">
                     <div className="w-20 h-20 bg-white rounded-lg overflow-hidden flex-shrink-0 border border-gray-200">
                       {item.image ? (
                         <img
@@ -116,7 +117,7 @@ export default function MiniCart({ isOpen, onClose }: MiniCartProps) {
                       <h3 className="font-semibold text-gray-900 mb-1 line-clamp-1">{item.name}</h3>
                       {item.variant && (
                         <p className="text-xs text-gray-600 mb-2">
-                          Variant: {item.variant}
+                          Size: {item.variant}
                         </p>
                       )}
 
@@ -127,35 +128,38 @@ export default function MiniCart({ isOpen, onClose }: MiniCartProps) {
 
                         <div className="flex items-center border border-gray-300 rounded bg-white">
                           <button
-                            onClick={() => updateQuantity(item.id, item.quantity - 1, item.variant)}
+                            onClick={() => updateQuantity(item.id, item.quantity - 1, item.variant, item.variantId)}
+                            aria-label={item.quantity <= (item.moq || 1) ? `Remove ${item.name}` : `One less ${item.name}`}
                             className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 transition-colors cursor-pointer"
                           >
                             {item.quantity <= (item.moq || 1) ? (
-                              <i className="ri-delete-bin-line text-red-500"></i>
+                              <i className="ri-delete-bin-line text-red-600" aria-hidden></i>
                             ) : (
-                              <i className="ri-subtract-line text-gray-700"></i>
+                              <i className="ri-subtract-line text-gray-700" aria-hidden></i>
                             )}
                           </button>
                           <span className="w-10 text-center font-semibold text-gray-900">{item.quantity}</span>
                           <button
-                            onClick={() => updateQuantity(item.id, item.quantity + 1, item.variant)}
-                            className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 transition-colors cursor-pointer"
-                            disabled={item.quantity >= item.maxStock}
+                            onClick={() => updateQuantity(item.id, item.quantity + 1, item.variant, item.variantId)}
+                            aria-label={`One more ${item.name}`}
+                            className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                            disabled={item.quantity >= cartLineLimit(item)}
                           >
-                            <i className="ri-add-line text-gray-700"></i>
+                            <i className="ri-add-line text-gray-700" aria-hidden></i>
                           </button>
                         </div>
                       </div>
-                      {item.quantity >= item.maxStock && (
-                        <p className="text-xs text-amber-600 mt-1">Max stock reached</p>
+                      {item.quantity >= cartLineLimit(item) && (
+                        <p className="text-xs text-amber-700 mt-1">That is all we have in this size</p>
                       )}
                     </div>
 
                     <button
-                      onClick={() => removeFromCart(item.id, item.variant)}
+                      onClick={() => removeFromCart(item.id, item.variant, item.variantId)}
+                      aria-label={`Remove ${item.name}`}
                       className="w-8 h-8 flex items-center justify-center hover:bg-red-50 rounded-full transition-colors flex-shrink-0 cursor-pointer"
                     >
-                      <i className="ri-delete-bin-line text-red-600"></i>
+                      <i className="ri-delete-bin-line text-red-600" aria-hidden></i>
                     </button>
                   </div>
                 ))}
@@ -169,7 +173,7 @@ export default function MiniCart({ isOpen, onClose }: MiniCartProps) {
               </div>
 
               <p className="text-sm text-gray-600 mb-4 text-center">
-                Shipping calculated at checkout
+Store pickup is free. Doorstep delivery cost is confirmed after you order.
               </p>
 
               <div className="space-y-3">

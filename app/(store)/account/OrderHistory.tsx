@@ -106,17 +106,31 @@ export default function OrderHistory() {
     setReorderingId(order.id);
     try {
       let added = 0;
+      let skipped = 0;
       for (const item of order.items) {
         if (!item.productId) continue;
         const { data: product, error } = await supabase
           .from('products')
-          .select('id, slug, name, price, quantity, moq, status, product_images(url)')
+          .select('id, slug, name, price, quantity, moq, status, product_images(url), product_variants(id, name, option1, price, quantity)')
           .eq('id', item.productId)
           .single();
         if (error || !product) continue;
         if (product.status === 'archived' || product.status === 'draft') continue;
 
-        const stock = asNumber(product.quantity);
+        // Use the same size as last time, at today's price. An outfit sold by size cannot be
+        // re-added without one, so it is skipped (and the shopper is told) rather than added at GH₵0.
+        const sizes = ((product as any).product_variants || []) as any[];
+        const want = String(item.variant || '').split(' / ').pop()?.trim().toLowerCase() || '';
+        const size = sizes.find(
+          (v) => want && (String(v.name || '').trim().toLowerCase() === want || String(v.option1 || '').trim().toLowerCase() === want)
+        );
+        const unitPrice = size ? asNumber(size.price) : sizes.length ? 0 : asNumber(product.price);
+        if (!(unitPrice > 0)) {
+          skipped += 1;
+          continue;
+        }
+
+        const stock = size ? asNumber(size.quantity) : asNumber(product.quantity);
         const images = (product as any).product_images as { url: string }[] | undefined;
         const image =
           images?.[0]?.url ||
@@ -126,13 +140,15 @@ export default function OrderHistory() {
         addToCart({
           id: product.id,
           name: product.name || item.name,
-          price: asNumber(product.price, item.price),
+          price: unitPrice,
           image,
           quantity: Math.max(1, item.quantity),
           variant: item.variant || undefined,
+          variantId: size?.id || undefined,
           slug: product.slug || item.slug || product.id,
-          maxStock: Math.max(1, stock || item.quantity || 1),
+          maxStock: stock > 0 ? stock : 50,
           moq: asNumber(product.moq, 1) || 1,
+          isPreorder: !(stock > 0),
         });
         added += 1;
       }
@@ -141,7 +157,12 @@ export default function OrderHistory() {
         window.alert('None of the items from this order are available to reorder right now.');
         return;
       }
-      setIsCartOpen(true);
+      if (skipped > 0) {
+        window.alert(
+          `${skipped} item${skipped === 1 ? '' : 's'} could not be added because the size is no longer listed. You can choose a size on the outfit's page.`
+        );
+      }
+      setIsCartOpen(false);
       router.push('/cart');
     } finally {
       setReorderingId(null);

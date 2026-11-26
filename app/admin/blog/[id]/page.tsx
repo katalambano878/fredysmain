@@ -13,7 +13,9 @@ export default function AdminBlogEditPage() {
   const [title, setTitle] = useState('');
   const [slug, setSlug] = useState('');
   const [content, setContent] = useState('');
-  const [status, setStatus] = useState<'draft' | 'published'>('draft');
+  const [status, setStatus] = useState<'draft' | 'published' | 'archived'>('draft');
+  // When the post first went live. Kept on later saves so an edit does not move it to the top as "new".
+  const [publishedAt, setPublishedAt] = useState<string | null>(null);
   const [featuredImage, setFeaturedImage] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -34,7 +36,8 @@ export default function AdminBlogEditPage() {
       setTitle(data.title || '');
       setSlug(data.slug || '');
       setContent(data.content || '');
-      setStatus(data.status === 'published' ? 'published' : 'draft');
+      setStatus(data.status === 'published' || data.status === 'archived' ? data.status : 'draft');
+      setPublishedAt(data.published_at || null);
       setFeaturedImage(data.featured_image || '');
       setLoading(false);
     }
@@ -53,7 +56,8 @@ export default function AdminBlogEditPage() {
         excerpt: content.replace(/<[^>]*>/g, ' ').trim().slice(0, 200),
         featured_image: featuredImage.trim() || null,
         status,
-        published_at: status === 'published' ? new Date().toISOString() : null,
+        // Set once, the first time the post is published. Drafts and archived posts keep the date they had.
+        published_at: status === 'published' ? publishedAt || new Date().toISOString() : publishedAt,
         updated_at: new Date().toISOString(),
       };
       const { error: updateError } = await supabase.from('blog_posts').update(payload).eq('id', id);
@@ -123,6 +127,7 @@ export default function AdminBlogEditPage() {
           >
             <option value="draft">Draft</option>
             <option value="published">Published</option>
+            <option value="archived">Archived</option>
           </select>
         </div>
         <div>

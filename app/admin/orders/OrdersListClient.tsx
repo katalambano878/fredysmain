@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { moneyLabel } from '@/lib/format-money';
+import { adminFetch } from '@/lib/admin-fetch';
 import ProductSalesStats from './ProductSalesStats';
 
 interface Order {
@@ -71,8 +72,6 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
-  const [showFilters, setShowFilters] = useState(false);
-  const [sortBy, setSortBy] = useState('date');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   // POS sales are always paid at checkout, so the "Abandoned carts" tab is
@@ -81,6 +80,7 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
   const [reconciling, setReconciling] = useState(false);
   const [reconcileMsg, setReconcileMsg] = useState<string | null>(null);
   const [sendingPaymentLink, setSendingPaymentLink] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [orderStats, setOrderStats] = useState<OrderStats[]>([
     { label: allStatsLabel, count: 0, status: 'all' },
     { label: 'Pending', count: 0, status: 'pending' },
@@ -100,6 +100,11 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
     fetchOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch when the locked channel changes
   }, [channel]);
+
+  // A selection made on one tab or under one filter must not carry over to rows that are now hidden.
+  useEffect(() => {
+    setSelectedOrders([]);
+  }, [orderViewTab, statusFilter, productFilter, searchQuery]);
 
   const isPosOrder = (order: Order) =>
     order.metadata?.pos_sale === true || order.metadata?.pos_sale === 'true';
@@ -239,75 +244,99 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
     }
   };
 
-  const handleBulkAction = async (action: string, newStatus?: string) => {
-    if (newStatus) {
-      try {
-        await Promise.all(
-          selectedOrders.map(id =>
-            fetch(`/api/admin/orders/${id}`, {
-              method: 'PATCH',
-              credentials: 'include',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ status: newStatus }),
-            })
-          )
-        );
-
-        const { data: { session } } = await supabase.auth.getSession();
-        const authToken = session?.access_token;
-
-        const updatedOrders = orders.filter(o => selectedOrders.includes(o.id));
-        updatedOrders.forEach(order => {
-          fetch('/api/notifications', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(authToken && { 'Authorization': `Bearer ${authToken}` })
-            },
-            body: JSON.stringify({
-              type: 'order_updated',
-              payload: { order, status: newStatus }
-            })
-          }).catch(err => console.error('Notification error', err));
-        });
-
-        await fetchOrders();
-        setSelectedOrders([]);
-        alert(`${selectedOrders.length} orders updated to ${newStatus}`);
-      } catch (error) {
-        console.error('Error updating orders:', error);
-        alert('Failed to update orders');
-      }
-    } else if (action === 'Export') {
-      const ordersToExport = orders.filter(o => selectedOrders.includes(o.id));
-      const csvContent = `Order ID,Customer,Email,Date,Items,Total,Status,Payment\n${ordersToExport.map(o =>
-        `${o.order_number || o.id},${getCustomerName(o)},${getCustomerEmail(o)},${formatDate(o.created_at)},${getItemCount(o)},${o.total},${o.status},${o.payment_method || 'N/A'}`
-      ).join('\n')}`;
-      const blob = new Blob([csvContent], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = isPosMode ? 'selected-sales.csv' : 'selected-orders.csv';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    }
-  };
-
-  const handleExportAll = () => {
-    const csvContent = `Order ID,Customer,Email,Date,Items,Total,Status,Payment\n${orders.map(o =>
-      `${o.order_number || o.id},${getCustomerName(o)},${getCustomerEmail(o)},${formatDate(o.created_at)},${getItemCount(o)},${o.total},${o.status},${o.payment_method || 'N/A'}`
-    ).join('\n')}`;
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+  /** Build a spreadsheet file from orders and download it. Every field is quoted, so commas in dates and names stay in their column. */
+  const downloadCsv = (list: Order[], filename: string) => {
+    const quote = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const lines = [
+      ['Order ID', 'Customer', 'Email', 'Date', 'Items', 'Total (GHS)', 'Status', 'Payment status', 'Payment method'].map(quote).join(','),
+      ...list.map((o) =>
+        [
+          o.order_number || o.id,
+          getCustomerName(o),
+          getCustomerEmail(o),
+          formatDate(o.created_at),
+          getItemCount(o),
+          Number(o.total || 0).toFixed(2),
+          o.status,
+          o.payment_status || '',
+          o.payment_method || '',
+        ]
+          .map(quote)
+          .join(',')
+      ),
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = exportFile;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
+  };
+
+  const handleBulkAction = async (action: string, newStatus?: string) => {
+    if (newStatus) {
+      if (bulkBusy) return;
+      setBulkBusy(true);
+      try {
+        // Each order is checked on its own: one failure must not be reported as a success for all.
+        const results = await Promise.all(
+          selectedOrders.map(async (id) => {
+            try {
+              const res = await fetch(`/api/admin/orders/${id}`, {
+                method: 'PATCH',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: newStatus }),
+              });
+              return { id, ok: res.ok };
+            } catch {
+              return { id, ok: false };
+            }
+          })
+        );
+        const updatedIds = new Set(results.filter((r) => r.ok).map((r) => r.id));
+        const failed = results.length - updatedIds.size;
+
+        // Tell only the customers whose order really changed.
+        orders
+          .filter((o) => updatedIds.has(o.id))
+          .forEach((order) => {
+            adminFetch('/api/notifications', {
+              method: 'POST',
+              body: JSON.stringify({ type: 'order_updated', payload: { order, status: newStatus } }),
+            }).catch((err) => console.error('Notification error', err));
+          });
+
+        await fetchOrders();
+        setSelectedOrders([]);
+        const noun = isPosMode ? 'sale' : 'order';
+        if (failed === 0) {
+          alert(`${updatedIds.size} ${noun}${updatedIds.size === 1 ? '' : 's'} updated to ${newStatus}.`);
+        } else {
+          alert(
+            `${updatedIds.size} ${noun}${updatedIds.size === 1 ? '' : 's'} updated to ${newStatus}. ${failed} could not be updated. Open them one by one to see why.`
+          );
+        }
+      } catch (error) {
+        console.error('Error updating orders:', error);
+        alert('The orders were not updated. Check your connection and try again.');
+      } finally {
+        setBulkBusy(false);
+      }
+    } else if (action === 'Export') {
+      downloadCsv(
+        orders.filter((o) => selectedOrders.includes(o.id)),
+        isPosMode ? 'selected-sales.csv' : 'selected-orders.csv'
+      );
+    }
+  };
+
+  /** Export what is on screen: the current tab, status, product filter and search. */
+  const handleExportAll = () => {
+    downloadCsv(filteredOrders, exportFile);
   };
 
   const handlePrintInvoice = (orderId: string) => {
@@ -317,21 +346,19 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
   const handleResendPaymentLink = async (order: Order) => {
     setSendingPaymentLink(order.id);
     try {
-      const response = await fetch('/api/notifications', {
+      // Sent with the staff session. Without it the request was refused every time.
+      await adminFetch('/api/notifications', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'payment_link',
           payload: order
         })
       });
 
-      if (!response.ok) throw new Error('Failed to send');
-
       alert(`Payment link sent to ${order.phone || order.email}`);
     } catch (error) {
       console.error('Error sending payment link:', error);
-      alert('Failed to send payment link');
+      alert(`The payment link was not sent. ${error instanceof Error ? error.message : ''}`.trim());
     } finally {
       setSendingPaymentLink(null);
     }
@@ -552,13 +579,6 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
             </div>
 
             <div className="flex items-center space-x-3">
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className="px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:border-gray-400 transition-colors font-medium whitespace-nowrap cursor-pointer"
-              >
-                <i className="ri-filter-line mr-2"></i>
-                Filters
-              </button>
               <select
                 value={productFilter}
                 onChange={(e) => setProductFilter(e.target.value)}
@@ -569,56 +589,9 @@ export default function OrdersListClient({ channel }: OrdersListClientProps) {
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="px-4 py-3 pr-8 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-600 focus:border-gray-600 font-medium cursor-pointer"
-              >
-                <option value="date">Sort by Date</option>
-                <option value="total">Sort by Total</option>
-                <option value="customer">Sort by Customer</option>
-                <option value="status">Sort by Status</option>
-              </select>
             </div>
           </div>
 
-          {showFilters && (
-            <div className="mt-4 p-4 bg-gray-50 rounded-lg grid md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Date Range</label>
-                <input type="date" className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm" />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Payment Method</label>
-                <select className="w-full px-3 py-2 pr-8 border-2 border-gray-300 rounded-lg text-sm cursor-pointer">
-                  <option>All Methods</option>
-                  <option>Moolre</option>
-                  <option>Mobile Money</option>
-                  <option>Card</option>
-                  {isPosMode && <option>Cash</option>}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  {isPosMode ? 'Cashier' : 'Shipping Method'}
-                </label>
-                <select className="w-full px-3 py-2 pr-8 border-2 border-gray-300 rounded-lg text-sm cursor-pointer">
-                  {isPosMode ? (
-                    <>
-                      <option>All Cashiers</option>
-                    </>
-                  ) : (
-                    <>
-                      <option>All Methods</option>
-                      <option>Standard</option>
-                      <option>Express</option>
-                      <option>Store Pickup</option>
-                    </>
-                  )}
-                </select>
-              </div>
-            </div>
-          )}
         </div>
 
         {selectedOrders.length > 0 && (

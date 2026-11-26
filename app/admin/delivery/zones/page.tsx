@@ -18,6 +18,7 @@ interface Zone {
 export default function ZonesPage() {
     const [zones, setZones] = useState<Zone[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [editingZone, setEditingZone] = useState<Zone | null>(null);
     const [form, setForm] = useState({
@@ -32,10 +33,13 @@ export default function ZonesPage() {
     async function fetchZones() {
         try {
             const res = await fetch('/api/delivery/zones');
+            if (!res.ok) throw new Error(res.status === 401 ? 'Your session has expired. Sign in again.' : 'The delivery data could not load.');
             const data = await res.json();
             setZones(data.zones || []);
+            setLoadError('');
         } catch (err) {
             console.error('Failed to fetch zones:', err);
+            setLoadError(err instanceof Error ? err.message : 'The delivery data could not load.');
         } finally {
             setLoading(false);
         }
@@ -137,7 +141,9 @@ export default function ZonesPage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Delivery Hub</h1>
-                    <p className="text-gray-500 mt-1">Define delivery areas and pricing</p>
+                    <p className="text-gray-600 mt-1">
+                        Your delivery areas and what you charge for each. This is a reference for staff: checkout does not add a delivery fee, and the cost is agreed with the customer after they order.
+                    </p>
                 </div>
                 <button onClick={openAddModal}
                     className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-xl hover:bg-gray-800 transition-colors font-medium text-sm">
@@ -146,6 +152,11 @@ export default function ZonesPage() {
             </div>
 
             <DeliveryNav />
+            {loadError && (
+                <p role="alert" className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                    {loadError} The figures below may be out of date or empty.
+                </p>
+            )}
 
             {loading ? (
                 <div className="flex items-center justify-center py-20">

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { sendOrderConfirmation } from '@/lib/notifications';
+import { mergeOrderMetadata } from '@/lib/order-metadata';
 import { fireMetaPurchaseForOrder } from '@/lib/meta-purchase';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 import {
@@ -127,7 +128,8 @@ export async function POST(req: Request) {
             '| Moolre ref:', moolreReference);
 
         if (!merchantOrderRef) {
-            console.error('[Callback] Missing order reference. Body:', JSON.stringify(body).substring(0, 500));
+            // Keys only: the body carries the callback secret.
+            console.error('[Callback] Missing order reference. Keys:', Object.keys(body || {}).join(','));
             return NextResponse.json({ success: false, message: 'Missing order reference' }, { status: 400 });
         }
 
@@ -238,16 +240,16 @@ export async function POST(req: Request) {
         } else {
             console.log(`[Callback] Payment FAILED for ${merchantOrderRef} | Status: ${apiStatus} | TX: ${txStatus}`);
 
-            await supabaseAdmin
-                .from('orders')
-                .update({
-                    payment_status: 'failed',
-                    metadata: {
-                        moolre_reference: moolreReference,
-                        failure_reason: body.message || 'Payment failed'
-                    }
-                })
-                .eq('order_number', merchantOrderRef);
+            // A late "failed" notice for an earlier attempt must not undo an order that has since
+            // been paid, and must not erase what is already recorded on it.
+            await mergeOrderMetadata(
+                { orderNumber: merchantOrderRef },
+                {
+                    moolre_failed_reference: String(moolreReference).slice(0, 120),
+                    failure_reason: String(body.message || 'Payment failed').slice(0, 300),
+                },
+                { payment_status: 'failed', onlyIfNotPaid: true }
+            );
 
             return NextResponse.json({ success: false, message: 'Payment not successful' });
         }

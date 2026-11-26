@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requirePermission } from '@/lib/admin-route-auth';
+import { isPlainPostgres } from '@/lib/db/mode';
 
 /** Same sources as /api/admin/me: Bearer header, sb-access-token cookie, or sb-*-auth-token. */
 function getAccessToken(request: Request): string | null {
@@ -114,6 +115,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
+    // The form asks for a password and tells the admin to share it, so it must take effect.
+    if (isPlainPostgres() && password) {
+      const { updateUserPassword } = await import('@/lib/db/auth');
+      const changed = await updateUserPassword(existingProfile.id, password);
+      if (changed.error) {
+        return NextResponse.json({ error: changed.error }, { status: 400 });
+      }
+    }
+
     return NextResponse.json({
       success: true,
       promoted: true,
@@ -121,16 +131,37 @@ export async function POST(request: Request) {
     });
   }
 
-  // Create new user via Supabase Auth Admin API
-  const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-    email: email.toLowerCase().trim(),
-    password,
-    email_confirm: true,
-    user_metadata: {
-      full_name: fullName,
-      phone: phone || '',
-    },
-  });
+  // Create the login. On this server (plain Postgres) there is no hosted "admin" auth API:
+  // calling it crashed, and Add Staff showed "Network error" for every new email.
+  let newUser: { user: { id: string } | null } | null = null;
+  let createError: { message: string } | null = null;
+  if (isPlainPostgres()) {
+    const { signUpWithPassword } = await import('@/lib/db/auth');
+    const created = await signUpWithPassword({
+      email: email.toLowerCase().trim(),
+      password,
+      data: { full_name: fullName, phone: phone || '' },
+    });
+    if (created.error) {
+      createError = {
+        message: created.error === 'User already registered' ? 'This email has already been registered.' : created.error,
+      };
+    } else {
+      newUser = { user: created.user ? { id: created.user.id } : null };
+    }
+  } else {
+    const result = await supabaseAdmin.auth.admin.createUser({
+      email: email.toLowerCase().trim(),
+      password,
+      email_confirm: true,
+      user_metadata: {
+        full_name: fullName,
+        phone: phone || '',
+      },
+    });
+    newUser = result.data;
+    createError = result.error;
+  }
 
   if (createError) {
     if (createError.message?.includes('already been registered')) {

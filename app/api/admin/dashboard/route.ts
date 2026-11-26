@@ -13,6 +13,8 @@ export async function GET(request: Request) {
   if (err) return err;
 
   const started = Date.now();
+  // The revenue chart covers the last 7 days, or 30 when asked.
+  const days = new URL(request.url).searchParams.get('days') === '30' ? 30 : 7;
 
   try {
     if (isPlainPostgres()) {
@@ -36,7 +38,7 @@ export async function GET(request: Request) {
             COALESCE(SUM(total), 0)::float AS revenue
           FROM orders
           WHERE payment_status = 'paid'
-            AND created_at >= (NOW() - INTERVAL '7 days')
+            AND created_at >= (NOW() - make_interval(days => ${days}))
           GROUP BY 1
           ORDER BY 1 ASC
         `),
@@ -51,6 +53,7 @@ export async function GET(request: Request) {
           SELECT name, quantity
           FROM products
           WHERE quantity < 10
+            AND status = 'active'
           ORDER BY quantity ASC
           LIMIT 5
         `),
@@ -76,9 +79,9 @@ export async function GET(request: Request) {
       const uniqueCustomers = Number(statsRow?.unique_customers) || 0;
       const avgOrderValue = paidOrders > 0 ? totalRevenue / paidOrders : 0;
 
-      const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const last7Days = Array.from({ length: days }, (_, i) => {
         const d = new Date();
-        d.setDate(d.getDate() - (6 - i));
+        d.setDate(d.getDate() - (days - 1 - i));
         return d.toISOString().split('T')[0];
       });
       const chartMap: Record<string, number> = {};
@@ -107,7 +110,7 @@ export async function GET(request: Request) {
         lowStock: lowStockRes.status === 'fulfilled' ? lowStockRes.value.rows : [],
         topProducts: productsRes.status === 'fulfilled'
           ? productsRes.value.rows.map((p) => ({
-              id: p.slug || p.id,
+              id: p.id,
               name: p.name,
               image: p.image_url || '/frebys-logo.png',
               sales: 0,
@@ -141,7 +144,7 @@ export async function GET(request: Request) {
         .eq('payment_status', 'paid')
         .order('created_at', { ascending: false })
         .limit(5),
-      supabaseAdmin.from('products').select('name, quantity').lt('quantity', 10).limit(5),
+      supabaseAdmin.from('products').select('name, quantity').lt('quantity', 10).eq('status', 'active').limit(5),
       supabaseAdmin.from('products').select('id, slug, name, quantity, product_images(url)').limit(4),
     ]);
 
@@ -151,9 +154,9 @@ export async function GET(request: Request) {
     const totalRevenue = paidOrders.reduce((s: number, o: any) => s + (Number(o.total) || 0), 0);
     const uniqueCustomers = new Set(allOrders.map((o: any) => o.email).filter(Boolean)).size;
 
-    const last7Days = Array.from({ length: 7 }, (_, i) => {
+    const last7Days = Array.from({ length: days }, (_, i) => {
       const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
+      d.setDate(d.getDate() - (days - 1 - i));
       return d.toISOString().split('T')[0];
     });
     const chartMap: Record<string, number> = {};
@@ -182,7 +185,7 @@ export async function GET(request: Request) {
       topProducts:
         productRes.status === 'fulfilled'
           ? (productRes.value.data || []).map((p: any) => ({
-              id: p.slug || p.id,
+              id: p.id,
               name: p.name,
               image: p.product_images?.[0]?.url || '/frebys-logo.png',
               sales: 0,

@@ -18,6 +18,10 @@ type ChatProduct = {
   maxStock: number;
   moq: number;
   inStock: boolean;
+  /** Lowest size price, when the outfit is priced per size (its own price is then 0). */
+  fromPrice?: number;
+  /** True when the shopper has to pick a size on the product page. */
+  hasSizes?: boolean;
 };
 
 type ChatOrder = {
@@ -289,6 +293,8 @@ export default function ChatWidget() {
   }, [input, loading, messages, open, pathname, cart, clearCart]);
 
   const handleAddToCart = useCallback((product: ChatProduct) => {
+    // Never put a line without a price in the cart: checkout would refuse it.
+    if (!(Number(product.price) > 0) || product.hasSizes) return;
     const item: CartItem = {
       id: product.id,
       name: product.name,
@@ -891,6 +897,10 @@ function MessageBubble({
 // ─── Product Card ───────────────────────────────────────────────────────────
 
 function ProductCard({ product, onAddToCart }: { product: ChatProduct; onAddToCart: (p: ChatProduct) => void }) {
+  const ownPrice = Number(product.price) || 0;
+  const fromPrice = Number(product.fromPrice) || 0;
+  // An outfit priced per size cannot go straight into the cart: the shopper has to choose the size first.
+  const needsSize = product.hasSizes === true || !(ownPrice > 0);
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
       <div className="flex items-center gap-2.5 p-2.5 sm:p-3">
@@ -905,13 +915,19 @@ function ProductCard({ product, onAddToCart }: { product: ChatProduct; onAddToCa
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">{product.name}</p>
-          <p className="text-sm font-bold text-gray-600">GH₵{product.price.toFixed(2)}</p>
-          <span className={`text-[10px] font-medium ${product.inStock ? 'text-gray-600' : 'text-red-500'}`}>
-            {product.inStock ? 'In Stock' : 'Out of Stock'}
+          <p className="text-sm font-bold text-gray-700">
+            {needsSize
+              ? fromPrice > 0
+                ? `From GH₵${fromPrice.toFixed(2)}`
+                : 'See sizes and prices'
+              : `GH₵${ownPrice.toFixed(2)}`}
+          </p>
+          <span className="text-[10px] font-medium text-gray-600">
+            {product.inStock ? 'In stock' : 'Made to order'}
           </span>
         </div>
         <div className="flex flex-col gap-1.5 flex-shrink-0">
-          {product.inStock && (
+          {product.inStock && !needsSize && (
             <button
               type="button"
               onClick={() => onAddToCart(product)}
@@ -922,10 +938,10 @@ function ProductCard({ product, onAddToCart }: { product: ChatProduct; onAddToCa
             </button>
           )}
           <a
-            href={`/products/${product.slug}`}
+            href={`/product/${product.slug}`}
             className="px-2.5 sm:px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium rounded-lg transition-all text-center"
           >
-            View
+            {needsSize ? 'Choose size' : 'View'}
           </a>
         </div>
       </div>

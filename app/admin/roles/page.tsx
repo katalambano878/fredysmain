@@ -35,14 +35,15 @@ const PERMISSION_LABELS: Record<string, { label: string; icon: string; descripti
     support: { label: 'Support Hub', icon: 'ri-customer-service-2-line', description: 'Manage support tickets' },
     customer_insights: { label: 'Customer Insights', icon: 'ri-user-search-line', description: 'View customer analytics and segments' },
     notifications: { label: 'Notifications', icon: 'ri-notification-3-line', description: 'Manage marketing notifications' },
+    sms_credit: { label: 'Buy SMS', icon: 'ri-message-2-line', description: 'See the SMS balance and buy more text messages' },
     sms_debugger: { label: 'SMS Debugger', icon: 'ri-message-2-line', description: 'Test and debug SMS messages' },
     blog: { label: 'Blog', icon: 'ri-article-line', description: 'Manage blog posts and content' },
     modules: { label: 'Modules', icon: 'ri-puzzle-line', description: 'Enable or disable store modules' },
-    staff: { label: 'Staff Management', icon: 'ri-team-line', description: 'Add and manage staff members' },
     delivery: { label: 'Delivery Hub', icon: 'ri-truck-line', description: 'Access delivery logistics dashboard' },
-    roles: { label: 'Roles & Permissions', icon: 'ri-shield-user-line', description: 'Manage user roles and permissions' },
 };
 
+// Staff Management and Roles & Permissions are not listed: those two screens are for administrators
+// only, so a switch here would show a menu item that then refuses to open.
 const PERMISSION_KEYS = Object.keys(PERMISSION_LABELS);
 
 export default function RolesPage() {

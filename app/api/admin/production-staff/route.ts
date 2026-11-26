@@ -1,12 +1,21 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { requireAdminSession, requirePermission } from '@/lib/admin-route-auth';
+import { getAdminActor } from '@/lib/admin-route-auth';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * The list is needed by three screens: the product form (who made it), Finance (log production)
+ * and the production team page. Staff who can open any of those may read it.
+ */
+const READ_PERMISSIONS = ['products', 'finance', 'delete_staff'];
+
 export async function GET(request: Request) {
-  const actor = await requirePermission(request, 'delete_staff');
-  if (actor instanceof NextResponse) return actor;
+  const actor = await getAdminActor(request);
+  if (!actor) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (actor.role !== 'admin' && !READ_PERMISSIONS.some((key) => actor.permissions[key] === true)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   const { searchParams } = new URL(request.url);
   const activeOnly = searchParams.get('active') !== '0';
   let q = supabaseAdmin.from('production_staff').select('*').order('full_name');
@@ -16,9 +25,13 @@ export async function GET(request: Request) {
   return NextResponse.json({ data });
 }
 
+/** Adding a production team member is for administrators only. */
 export async function POST(request: Request) {
-  const err = await requireAdminSession(request);
-  if (err) return err;
+  const actor = await getAdminActor(request);
+  if (!actor) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  if (actor.role !== 'admin') {
+    return NextResponse.json({ error: 'Only an administrator can add production team members.' }, { status: 403 });
+  }
   try {
     const body = await request.json();
     const full_name = String(body.full_name || '').trim();

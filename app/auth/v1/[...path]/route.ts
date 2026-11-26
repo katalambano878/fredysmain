@@ -9,6 +9,7 @@ import {
   updateUserMetadata,
 } from "@/lib/db/auth";
 import { isPlainPostgres } from "@/lib/db/mode";
+import { checkRateLimit, getClientIdentifier } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -110,6 +111,12 @@ export async function POST(
     if (grant === "password") {
       const email = String(body.email || "");
       const password = String(body.password || "");
+      // Slow down password guessing: by address, and by the account being tried.
+      const byIp = checkRateLimit(`login-ip:${getClientIdentifier(req)}`, { maxRequests: 20, windowSeconds: 300 });
+      const byEmail = checkRateLimit(`login-email:${email.trim().toLowerCase()}`, { maxRequests: 8, windowSeconds: 300 });
+      if (!byIp.success || !byEmail.success) {
+        return gotrueError("Too many sign-in attempts. Wait a few minutes and try again.", 429, "over_request_rate_limit");
+      }
       const { session, error } = await signInWithPassword(email, password);
       if (error || !session) {
         return gotrueError(error || "Invalid login credentials", 400, "invalid_grant");
@@ -130,6 +137,9 @@ export async function POST(
   }
 
   if (slug === "signup") {
+    if (!checkRateLimit(`signup:${getClientIdentifier(req)}`, { maxRequests: 6, windowSeconds: 600 }).success) {
+      return gotrueError("Too many sign-ups from this connection. Try again later.", 429, "over_request_rate_limit");
+    }
     const { session, error } = await signUpWithPassword({
       email: String(body.email || ""),
       password: String(body.password || ""),

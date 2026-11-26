@@ -1,3 +1,5 @@
+import { filterTerm } from '@/lib/sanitize';
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type ChatProduct = {
@@ -5,6 +7,10 @@ export type ChatProduct = {
   name: string;
   slug: string;
   price: number;
+  /** Lowest price a shopper can pay: the cheapest size, or the product's own price. */
+  fromPrice?: number;
+  /** True when the outfit is sold by size, so it must be chosen on the product page. */
+  hasSizes?: boolean;
   image: string;
   quantity: number;
   maxStock: number;
@@ -63,12 +69,12 @@ export async function searchProducts(
   query: string,
   limit = 4
 ): Promise<ChatProduct[]> {
-  const term = (query || '').trim();
+  const term = filterTerm(query);
   if (!term) return [];
 
   const { data, error } = await supabase
     .from('products')
-    .select(`id, name, slug, price, quantity, metadata, product_images(url, position)`)
+    .select(`id, name, slug, price, quantity, metadata, product_images(url, position), product_variants(price, quantity)`)
     .eq('status', 'active')
     .or(`name.ilike.%${term}%,description.ilike.%${term}%`)
     .order('name')
@@ -93,7 +99,7 @@ export async function getProductForCart(
 
   const q = supabase
     .from('products')
-    .select(`id, name, slug, price, quantity, metadata, product_images(url, position)`)
+    .select(`id, name, slug, price, quantity, metadata, product_images(url, position), product_variants(price, quantity)`)
     .eq('status', 'active');
 
   const { data, error } = isId
@@ -315,12 +321,13 @@ export async function getRecommendations(
 ): Promise<ChatProduct[]> {
   let query = supabase
     .from('products')
-    .select(`id, name, slug, price, quantity, metadata, product_images(url, position)`)
+    .select(`id, name, slug, price, quantity, metadata, product_images(url, position), product_variants(price, quantity)`)
     .eq('status', 'active')
     .gt('quantity', 0);
 
-  if (context?.trim()) {
-    query = query.or(`name.ilike.%${context.trim()}%,description.ilike.%${context.trim()}%`);
+  const contextTerm = filterTerm(context);
+  if (contextTerm) {
+    query = query.or(`name.ilike.%${contextTerm}%,description.ilike.%${contextTerm}%`);
   }
 
   const { data, error } = await query
@@ -445,6 +452,8 @@ function sanitize(input: string): string {
     .slice(0, MAX_FIELD_LENGTH);
 }
 
+const CHAT_ORDERING_DISABLED = true;
+
 export async function createChatOrder(
   supabaseAdmin: any,
   params: {
@@ -456,6 +465,18 @@ export async function createChatOrder(
   }
 ): Promise<ChatOrderResult> {
   const { items, shipping, deliveryMethod, paymentMethod, userId } = params;
+
+  // Ordering inside the chat is switched off. It priced outfits from the product row, which is
+  // GH₵0 for anything priced by size, so an order could be created for the delivery fee alone
+  // (or for nothing with "cash on delivery", which the shop does not offer). Orders go through
+  // the normal checkout, which prices every size on the server.
+  if (CHAT_ORDERING_DISABLED) {
+    return {
+      success: false,
+      message:
+        'I cannot place orders in the chat. Open the outfit, choose the size, add it to your cart and check out on the site. I can help you find the outfit.',
+    };
+  }
 
   if (!items || items.length === 0) {
     return { success: false, message: 'No items provided. Please add products to your cart first.' };
@@ -550,7 +571,7 @@ export async function createChatOrder(
     const orderNumber = `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const trackingChars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     const trackingId = Array.from({ length: 6 }, () => trackingChars[Math.floor(Math.random() * trackingChars.length)]).join('');
-    const trackingNumber = `SLI-${trackingId}`;
+    const trackingNumber = `FRB-${trackingId}`;
 
     const shippingData = {
       firstName: sanitizedShipping.firstName,
@@ -730,13 +751,22 @@ export async function createChatOrder(
 // ─── Helper ─────────────────────────────────────────────────────────────────
 
 function mapProduct(p: any): ChatProduct {
-  const qty = Number(p.quantity) ?? 0;
   const moq = Number(p.metadata?.moq) || 1;
+  // Most outfits are priced and stocked per size: the product's own price is 0.
+  const sizes: any[] = Array.isArray(p.product_variants) ? p.product_variants : [];
+  const sizePrices = sizes.map((v) => Number(v.price)).filter((n) => Number.isFinite(n) && n > 0);
+  const hasSizes = sizes.length > 0;
+  const fromPrice = sizePrices.length ? Math.min(...sizePrices) : Number(p.price) || 0;
+  const qty = hasSizes
+    ? sizes.reduce((sum, v) => sum + (Number(v.quantity) || 0), 0)
+    : Number(p.quantity) || 0;
   return {
     id: p.id,
     name: p.name,
     slug: p.slug,
-    price: Number(p.price),
+    price: Number(p.price) || 0,
+    fromPrice,
+    hasSizes,
     image: p.product_images?.[0]?.url || '',
     quantity: qty,
     maxStock: qty,

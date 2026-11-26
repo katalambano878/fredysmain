@@ -63,13 +63,12 @@ export default function ProductReviews({ productId }: ProductReviewsProps) {
       if (error) throw error;
 
       if (data) {
-        // We need to fetch user names if possible. Since we don't have public profiles easily accessible 
-        // without complicated RLS/joins in client, we might fallback to generic name or metadata if stored.
-        // For this demo, we'll try to use a "clean" name or just "Verified Customer"
+        // Reviewer names are not public, so every review is shown as from a customer.
+        // "Verified" is only claimed when the review is tied to a purchase.
 
         const formattedReviews = data.map((r: any) => ({
           id: r.id,
-          author: 'Verified Customer', // or fetch from profiles if we had it joined
+          author: r.verified_purchase ? 'Verified Customer' : 'Customer',
           rating: r.rating,
           date: r.created_at,
           verified: r.verified_purchase,
@@ -127,13 +126,12 @@ export default function ProductReviews({ productId }: ProductReviewsProps) {
         rating: reviewForm.rating,
         title: reviewForm.title,
         content: reviewForm.content,
-        status: 'approved', // Auto-approve for demo
-        verified_purchase: false // We could check orders here but keeping it simple
       }]);
 
       if (error) throw error;
 
-      alert('Review submitted successfully!');
+      // The server saves every new review as waiting for approval.
+      alert('Thanks. Your review will show once it is approved.');
       setShowReviewForm(false);
       setReviewForm({ rating: 5, title: '', content: '' });
       invalidateCache(`reviews:${productId}`); // Clear cache so fresh data is fetched
@@ -141,7 +139,7 @@ export default function ProductReviews({ productId }: ProductReviewsProps) {
 
     } catch (err: any) {
       console.error('Submit review error:', err);
-      alert('Failed to submit review: ' + err.message);
+      alert('We could not save your review. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -317,8 +315,8 @@ export default function ProductReviews({ productId }: ProductReviewsProps) {
                     <span className="font-semibold text-gray-900">{review.author}</span>
                     {review.verified && (
                       <span className="flex items-center text-xs text-gray-900 bg-gray-50 px-2 py-1 rounded">
-                        <i className="ri-checkbox-circle-fill mr-1"></i>
-                        Verified Must Have
+                        <i className="ri-checkbox-circle-fill mr-1" aria-hidden></i>
+                        Verified purchase
                       </span>
                     )}
                   </div>

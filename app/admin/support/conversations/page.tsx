@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { adminFetch } from '@/lib/admin-fetch';
 
 export default function ConversationsPage() {
   const [conversations, setConversations] = useState<any[]>([]);
@@ -13,6 +13,7 @@ export default function ConversationsPage() {
   const [resolvedFilter, setResolvedFilter] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [loadError, setLoadError] = useState('');
   const limit = 20;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -31,30 +32,19 @@ export default function ConversationsPage() {
   const fetchConversations = useCallback(async () => {
     setLoading(true);
     try {
-      const offset = (page - 1) * limit;
-
-      // Use RPC for deep message search (searches inside actual chat messages)
-      const { data: result, error } = await supabase.rpc('search_chat_conversations', {
-        p_search: debouncedSearch || '',
-        p_sentiment: sentimentFilter || '',
-        p_resolved: resolvedFilter || '',
-        p_limit: limit,
-        p_offset: offset,
-      });
-
-      if (error) {
-        console.error('Search error:', error);
-        setConversations([]);
-        setTotal(0);
-      } else {
-        const parsed = typeof result === 'string' ? JSON.parse(result) : result;
-        setConversations(parsed?.data || []);
-        setTotal(parsed?.total || 0);
-      }
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (debouncedSearch) params.set('search', debouncedSearch);
+      if (sentimentFilter) params.set('sentiment', sentimentFilter);
+      if (resolvedFilter) params.set('resolved', resolvedFilter);
+      const result = await adminFetch<{ data: any[]; total: number }>(`/api/support/conversations?${params}`);
+      setConversations(result.data || []);
+      setTotal(result.total || 0);
+      setLoadError('');
     } catch (e) {
       console.error('Search error:', e);
       setConversations([]);
       setTotal(0);
+      setLoadError(e instanceof Error ? e.message : 'The conversations could not load.');
     } finally {
       setLoading(false);
     }
@@ -149,6 +139,14 @@ export default function ConversationsPage() {
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-gray-400"><i className="ri-loader-4-line animate-spin text-2xl" /></div>
+        ) : loadError ? (
+          <div className="p-12 text-center">
+            <p className="text-sm font-medium text-gray-900">The conversations could not load.</p>
+            <p className="text-sm text-gray-600 mt-1">{loadError}</p>
+            <button onClick={fetchConversations} className="mt-3 px-4 py-2 text-sm font-semibold border border-gray-300 rounded-lg hover:bg-gray-50">
+              Try again
+            </button>
+          </div>
         ) : conversations.length === 0 ? (
           <div className="p-12 text-center text-gray-400">
             <i className="ri-chat-off-line text-5xl mb-3 block" />

@@ -51,30 +51,13 @@ export async function POST(request: Request) {
         // order_created — verify the order exists in the database
         // ============================================================
         if (type === 'order_created') {
-            // Verify the order actually exists before sending confirmation
-            if (!payload.order_number && !payload.id) {
-                return NextResponse.json({ error: 'Missing order identifier' }, { status: 400 });
-            }
-
-            const orderRef = payload.order_number || payload.id;
-            const { data: order, error: orderError } = await supabaseAdmin
-                .from('orders')
-                .select('id, order_number, created_at')
-                .or(`order_number.eq.${orderRef},id.eq.${orderRef}`)
-                .single();
-
-            if (orderError || !order) {
-                return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-            }
-
-            // Verify the order was created recently (within last 10 minutes)
-            const orderAge = Date.now() - new Date(order.created_at).getTime();
-            if (orderAge > 10 * 60 * 1000) {
-                return NextResponse.json({ error: 'Order confirmation can only be sent for recent orders' }, { status: 400 });
-            }
-
-            await sendOrderConfirmation(payload);
-            return NextResponse.json({ success: true, message: 'Order confirmation sent' });
+            // Confirmations go out from the payment step, once the money is confirmed, using the
+            // order as stored. This public call used to text and email whatever name, number and
+            // total the caller sent, for an order nobody had paid for. It now sends nothing.
+            return NextResponse.json({
+                success: true,
+                message: 'Order confirmations are sent when payment is confirmed',
+            });
         }
 
         if (type === 'order_updated') {
@@ -162,8 +145,12 @@ export async function POST(request: Request) {
             if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
                 return NextResponse.json({ error: 'Recipients required' }, { status: 400 });
             }
-            if (!subject || !message) {
-                return NextResponse.json({ error: 'Subject and message required' }, { status: 400 });
+            // A text has no subject line, so one is only needed when an email goes out.
+            if (!message) {
+                return NextResponse.json({ error: 'Write a message first' }, { status: 400 });
+            }
+            if (channels?.email && !subject) {
+                return NextResponse.json({ error: 'An email needs a subject' }, { status: 400 });
             }
 
             // Deduplicate phone numbers and emails server-side
@@ -188,12 +175,13 @@ export async function POST(request: Request) {
 <p style="color:#374151;font-size:14px;line-height:1.7;margin:16px 0;">Hi ${recipientName},</p>
 <p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 16px;">${safeMessage.replace(/\n/g, '</p><p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 16px;">')}</p>
 `, safeSubject);
-                            await sendEmail({
+                            // Counted only when it really went out (the sender returns nothing on failure).
+                            const emailed = await sendEmail({
                                 to: recipient.email,
                                 subject: subject, // Keep original for email subject header
                                 html: brandedHtml
                             });
-                            results.email++;
+                            if (emailed) results.email++;
                         }
                     }
 
@@ -202,11 +190,11 @@ export async function POST(request: Request) {
                         const phoneKey = recipient.phone.replace(/[\s\-\(\)\.]+/g, '');
                         if (!seenPhones.has(phoneKey)) {
                             seenPhones.add(phoneKey);
-                            await sendSMS({
+                            const texted = await sendSMS({
                                 to: recipient.phone,
                                 message: message // SMS is plain text, no XSS risk
                             });
-                            results.sms++;
+                            if (texted) results.sms++;
                         }
                     }
                 } catch (err: any) {

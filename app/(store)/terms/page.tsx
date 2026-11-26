@@ -133,17 +133,13 @@ export default function TermsPage() {
 
             <h3 className="text-xl font-bold text-gray-900 mb-4 mt-8">4.2 Payment</h3>
             <p className="text-gray-600 leading-relaxed mb-4">
-              We accept the following payment methods:
+              We accept payment by Mobile Money:
             </p>
             <div className="bg-gray-50 p-6 rounded-xl mb-6">
               <ul className="space-y-2 text-gray-600">
                 <li className="flex items-center gap-2">
                   <i className="ri-smartphone-line text-gray-900"></i>
-                  <span>Mobile Money (MTN, Vodafone, AirtelTigo) via Moolre</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <i className="ri-bank-card-line text-gray-900"></i>
-                  <span>Credit/Debit Cards (Visa, Mastercard) via Moolre</span>
+                  <span>Mobile Money (MTN, Vodafone, AirtelTigo)</span>
                 </li>
               </ul>
             </div>

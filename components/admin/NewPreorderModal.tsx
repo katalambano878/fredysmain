@@ -23,7 +23,11 @@ type LineItem = {
   size: string;
   style: string;
   notes: string;
+  /** The sizes of the chosen catalogue product, each with its own price. Empty for a custom item. */
+  sizes?: SizeOption[];
 };
+
+type SizeOption = { name: string; price: number; quantity: number };
 
 type CustomerRow = {
   id: string;
@@ -38,7 +42,39 @@ type ProductRow = {
   price?: number | string;
   quantity?: number;
   product_images?: { url: string }[];
+  product_variants?: {
+    name?: string | null;
+    option1?: string | null;
+    option2?: string | null;
+    price?: number | string | null;
+    quantity?: number | null;
+    sort_order?: number | null;
+  }[];
 };
+
+/** A product's sizes with the price each sells at (a size with no price of its own uses the product price). */
+function sizesOf(p: ProductRow): SizeOption[] {
+  const own = Number(p.price) || 0;
+  return [...(p.product_variants || [])]
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .map((v) => ({
+      name: [v.option2, v.name || v.option1].filter(Boolean).join(' / ') || 'One size',
+      price: Number(v.price) > 0 ? Number(v.price) : own,
+      quantity: Number(v.quantity) || 0,
+    }));
+}
+
+/** The price to show in the product list: the lowest size price when the product is priced per size. */
+function listPrice(p: ProductRow): { price: number; from: boolean; stock: number } {
+  const sizes = sizesOf(p);
+  if (sizes.length === 0) return { price: Number(p.price) || 0, from: false, stock: Number(p.quantity) || 0 };
+  const prices = sizes.map((s) => s.price).filter((n) => n > 0);
+  return {
+    price: prices.length ? Math.min(...prices) : 0,
+    from: new Set(prices).size > 1,
+    stock: sizes.reduce((sum, s) => sum + s.quantity, 0),
+  };
+}
 
 const emptyLine = (): LineItem => ({
   key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -109,6 +145,8 @@ export default function NewPreorderModal({ open, onClose, onCreated }: Props) {
   const [depositPct, setDepositPct] = useState<50 | 100 | 'custom'>(50);
 
   const [submitting, setSubmitting] = useState(false);
+  // True from a successful save until the window closes, so a second click cannot create the preorder twice.
+  const [created, setCreated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultMsg, setResultMsg] = useState<string | null>(null);
 
@@ -135,6 +173,7 @@ export default function NewPreorderModal({ open, onClose, onCreated }: Props) {
     setDepositAmount('');
     setDepositPct(50);
     setError(null);
+    setCreated(false);
     setResultMsg(null);
     setSubmitting(false);
   }, []);
@@ -155,7 +194,7 @@ export default function NewPreorderModal({ open, onClose, onCreated }: Props) {
         setCustomers([]);
       }
       try {
-        const res = await fetch('/api/admin/products?fields=inventory&limit=500', {
+        const res = await fetch('/api/admin/products?fields=inventory&limit=2000', {
           credentials: 'include',
         });
         const json = await res.json();
@@ -220,11 +259,20 @@ export default function NewPreorderModal({ open, onClose, onCreated }: Props) {
   };
 
   const applyCatalogProduct = (lineKey: string, p: ProductRow) => {
+    const sizes = sizesOf(p);
+    // One size: pick it. Several: the staff member chooses, and the price follows the size.
+    const only = sizes.length === 1 ? sizes[0] : null;
     updateItem(lineKey, {
       type: 'catalog',
       product_id: p.id,
       product_name: p.name,
-      unit_price: String(Number(p.price) || ''),
+      sizes,
+      size: only ? only.name : '',
+      unit_price: only
+        ? String(only.price || '')
+        : sizes.length > 1
+          ? ''
+          : String(Number(p.price) || ''),
     });
     setProductPickerFor(null);
     setProductQuery('');
@@ -238,6 +286,9 @@ export default function NewPreorderModal({ open, onClose, onCreated }: Props) {
     if (s === 2) {
       for (const it of items) {
         if (!it.product_name.trim()) return 'Every item needs a name or description';
+        if (it.type === 'catalog' && it.sizes && it.sizes.length > 1 && !it.size.trim()) {
+          return `Choose a size for “${it.product_name}”`;
+        }
         if (!(Number(it.unit_price) > 0)) return `Set a price for “${it.product_name || 'item'}”`;
       }
     }
@@ -262,6 +313,7 @@ export default function NewPreorderModal({ open, onClose, onCreated }: Props) {
   };
 
   const handleSubmit = async () => {
+    if (submitting || created) return;
     const err = validateStep(4) || validateStep(1) || validateStep(2) || validateStep(3);
     if (err) {
       setError(err);
@@ -312,6 +364,7 @@ export default function NewPreorderModal({ open, onClose, onCreated }: Props) {
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error || 'Failed to create preorder');
       setResultMsg(json.message || 'Preorder created');
+      setCreated(true);
       onCreated(json.order);
       setTimeout(() => {
         onClose();
@@ -604,10 +657,17 @@ export default function NewPreorderModal({ open, onClose, onCreated }: Props) {
                               >
                                 <span className="font-medium text-gray-900">{p.name}</span>
                                 <span className="text-gray-600 whitespace-nowrap">
-                                  {moneyLabel(p.price)}
-                                  {Number(p.quantity) === 0 && (
-                                    <span className="ml-1 text-amber-700 text-xs">OOS</span>
-                                  )}
+                                  {(() => {
+                                    const shown = listPrice(p);
+                                    return (
+                                      <>
+                                        {shown.price > 0 ? `${shown.from ? 'From ' : ''}${moneyLabel(shown.price)}` : 'No price set'}
+                                        {shown.stock === 0 && (
+                                          <span className="ml-1 text-amber-700 text-xs">Out of stock</span>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
                                 </span>
                               </button>
                             </li>
@@ -638,12 +698,36 @@ export default function NewPreorderModal({ open, onClose, onCreated }: Props) {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       <div>
                         <label className="block text-[11px] font-semibold text-gray-600 mb-1">Size</label>
-                        <input
-                          value={it.size}
-                          onChange={(e) => updateItem(it.key, { size: e.target.value })}
-                          placeholder="M / 12 / custom"
-                          className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-                        />
+                        {it.type === 'catalog' && it.sizes && it.sizes.length > 0 ? (
+                          <select
+                            value={it.size}
+                            onChange={(e) => {
+                              const chosen = it.sizes!.find((sz) => sz.name === e.target.value);
+                              // The price follows the size: each size of an outfit has its own price.
+                              updateItem(it.key, {
+                                size: e.target.value,
+                                ...(chosen ? { unit_price: String(chosen.price || '') } : {}),
+                              });
+                            }}
+                            className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                          >
+                            <option value="">Choose a size</option>
+                            {it.sizes.map((sz, index) => (
+                              <option key={`${sz.name}-${index}`} value={sz.name}>
+                                {sz.name}
+                                {sz.price > 0 ? `, ${moneyLabel(sz.price)}` : ''}
+                                {sz.quantity === 0 ? ' (to be made)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            value={it.size}
+                            onChange={(e) => updateItem(it.key, { size: e.target.value })}
+                            placeholder="M / 12 / custom"
+                            className="w-full px-2.5 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+                          />
+                        )}
                       </div>
                       <div>
                         <label className="block text-[11px] font-semibold text-gray-600 mb-1">Color</label>
@@ -938,7 +1022,7 @@ export default function NewPreorderModal({ open, onClose, onCreated }: Props) {
           ) : (
             <button
               type="button"
-              disabled={submitting}
+              disabled={submitting || created}
               onClick={handleSubmit}
               className="px-5 py-2.5 rounded-lg bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold disabled:opacity-50 inline-flex items-center gap-2"
             >

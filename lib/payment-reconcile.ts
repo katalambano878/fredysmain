@@ -1,3 +1,5 @@
+import { referenceBelongsToOrder } from '@/lib/payment-refs';
+import { mergeOrderMetadata } from '@/lib/order-metadata';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import {
   checkHubtelStatus,
@@ -49,6 +51,7 @@ async function markPaid(orderNumber: string, gatewayRef: string) {
  * Ask Hubtel whether a single pending order is actually paid, and mark it if so.
  */
 export async function reconcileHubtelOrder(order: {
+  id?: string;
   order_number: string;
   total: number | string;
   payment_status: string;
@@ -69,6 +72,9 @@ export async function reconcileHubtelOrder(order: {
     order.metadata?.hubtel_client_reference ||
     order.metadata?.hubtel_balance_reference ||
     orderNumber;
+  if (order.id && !(await referenceBelongsToOrder(String(hubtelRef), { id: order.id, order_number: orderNumber }))) {
+    return { orderNumber, action: 'skipped', message: 'Payment reference does not belong to this order', total: expected };
+  }
 
   try {
     const status = await checkHubtelStatus(String(hubtelRef));
@@ -149,17 +155,15 @@ export async function reconcileHubtelOrder(order: {
 
     await markPaid(orderNumber, String(gatewayRef));
 
-    await supabaseAdmin
-      .from('orders')
-      .update({
-        metadata: {
-          ...(order.metadata || {}),
-          hubtel_reconciled_at: new Date().toISOString(),
-          hubtel_last_status: sStatus,
-          payment_gateway: 'hubtel',
-        },
-      })
-      .eq('order_number', orderNumber);
+    // Added to what marking the order paid just recorded, never in place of it.
+    await mergeOrderMetadata(
+      { orderNumber },
+      {
+        hubtel_reconciled_at: new Date().toISOString(),
+        hubtel_last_status: sStatus,
+        payment_gateway: 'hubtel',
+      }
+    );
 
     return {
       orderNumber,

@@ -56,7 +56,8 @@ function AccountContent() {
           firstName: session.user.user_metadata?.first_name || '',
           lastName: session.user.user_metadata?.last_name || '',
           email: session.user.email || '',
-          phone: session.user.phone || ''
+          // Sign-up stores the phone in the profile details, not on the login record.
+          phone: session.user.phone || session.user.user_metadata?.phone || ''
         });
       } catch (e) {
         console.error('[Account] session check failed:', e);
@@ -133,36 +134,9 @@ function AccountContent() {
     );
   }
 
-  const quickActions = [
-    {
-      icon: 'ri-medal-line',
-      title: 'Loyalty Program',
-      description: 'Earn points and rewards',
-      link: '/loyalty'
-    },
-    {
-      icon: 'ri-user-add-line',
-      title: 'Refer & Earn',
-      description: 'Invite friends and earn rewards',
-      link: '/referral'
-    }
-  ];
-
   const securityOptions = [
-    {
-      icon: 'ri-mail-check-line',
-      title: 'Verify Email',
-      description: user?.email,
-      status: user?.email_confirmed_at ? 'verified' : 'unverified',
-      link: '#' // /account/verify-email
-    },
-    {
-      icon: 'ri-phone-line',
-      title: 'Verify Phone',
-      description: user?.phone || 'No phone added',
-      status: user?.phone_confirmed_at ? 'verified' : 'unverified',
-      link: '#' // /account/verify-phone
-    }
+    { icon: 'ri-mail-line', title: 'Email', description: user?.email || 'No email added' },
+    { icon: 'ri-phone-line', title: 'Phone', description: user?.phone || user?.user_metadata?.phone || 'No phone added' },
   ];
 
   return (
@@ -373,37 +347,25 @@ function AccountContent() {
 
                 {activeTab === 'security' && (
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900 mb-6">Security Settings</h2>
+                    <h2 className="text-2xl font-bold text-gray-900 mb-2">Sign-in details</h2>
+                    <p className="text-gray-700 mb-6">
+                      Need to change your password?{' '}
+                      <Link href="/auth/forgot-password" className="font-semibold text-gray-900 underline">
+                        Contact us and we will help
+                      </Link>
+                      .
+                    </p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {securityOptions.map((option, index) => (
-                        <Link
-                          key={index}
-                          href={option.link}
-                          className="flex items-center justify-between p-5 border border-gray-200 rounded-2xl hover:border-gray-600 hover:shadow-md transition-all group bg-white"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center group-hover:bg-gray-100 group-hover:text-gray-900 transition-colors flex-shrink-0">
-                              <i className={`${option.icon} text-xl`}></i>
-                            </div>
-                            <div className="min-w-0">
-                              <h3 className="font-bold text-gray-900 truncate">{option.title}</h3>
-                              <p className="text-sm text-gray-500 truncate">{option.description}</p>
-                            </div>
+                      {securityOptions.map((option) => (
+                        <div key={option.title} className="flex items-center gap-3 min-w-0 p-5 border border-gray-200 rounded-2xl bg-white">
+                          <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center flex-shrink-0">
+                            <i className={`${option.icon} text-xl`} aria-hidden></i>
                           </div>
-                          <div className="flex items-center gap-3 flex-shrink-0">
-                            {option.status === 'verified' && (
-                              <span className="text-[10px] sm:text-xs font-bold px-2 sm:px-3 py-1 bg-gray-100 text-gray-900 rounded-full flex items-center gap-1">
-                                <i className="ri-verified-badge-fill"></i> <span className="hidden sm:inline">Verified</span>
-                              </span>
-                            )}
-                            {option.status === 'unverified' && (
-                              <span className="text-[10px] sm:text-xs font-bold px-2 sm:px-3 py-1 bg-amber-100 text-amber-700 rounded-full flex items-center gap-1">
-                                <i className="ri-error-warning-fill"></i> <span className="hidden sm:inline">Verify</span>
-                              </span>
-                            )}
-                            <i className="ri-arrow-right-line text-gray-300 group-hover:text-gray-600 transition-colors"></i>
+                          <div className="min-w-0">
+                            <h3 className="font-bold text-gray-900 truncate">{option.title}</h3>
+                            <p className="text-sm text-gray-600 truncate">{option.description}</p>
                           </div>
-                        </Link>
+                        </div>
                       ))}
                     </div>
                   </div>

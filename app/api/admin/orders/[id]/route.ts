@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { isPlainPostgres } from '@/lib/db/mode';
+import { mergeOrderMetadata } from '@/lib/order-metadata';
 
 function getAccessToken(request: Request): string | null {
   const authHeader = request.headers.get('authorization');
@@ -109,18 +110,49 @@ export async function PATCH(
     const body = await request.json();
     const { status, notes, metadata, mark_packed } = body;
 
-    const updatePayload: any = { status, notes, metadata };
+    // Only what was actually sent is changed. A status-only update (the bulk action) used to
+    // blank the order's notes and wipe its payment details.
+    const updatePayload: Record<string, unknown> = {};
+    if (typeof status === 'string' && status) updatePayload.status = status;
+    if (typeof notes === 'string') updatePayload.notes = notes;
+    if (mark_packed) updatePayload.packed_by = auth.userId;
 
-    if (mark_packed) {
-      updatePayload.packed_by = auth.userId;
+    if (Object.keys(updatePayload).length > 0) {
+      const { error } = await supabaseAdmin.from('orders').update(updatePayload).eq('id', id);
+      if (error) throw error;
     }
 
-    const { error } = await supabaseAdmin
-      .from('orders')
-      .update(updatePayload)
-      .eq('id', id);
+    // A cancelled order gives its stock back (once: the database function clears its own flag).
+    let stockRestored = false;
+    if (updatePayload.status === 'cancelled') {
+      const { data: restored, error: restoreError } = await supabaseAdmin.rpc('restore_order_stock', {
+        p_order_id: id,
+      });
+      if (restoreError) console.error('[orders] restore_order_stock failed:', restoreError.message);
+      stockRestored = restored === true;
+    }
 
-    if (error) throw error;
+    // Metadata is added to what is stored, never swapped for the copy the browser had.
+    if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+      // Keys the payment and stock code own are not taken from the browser's (possibly old) copy.
+      const serverOwned = new Set([
+        'stock_reduced',
+        'stock_restored_at',
+        'payment_verified_at',
+        'moolre_reference',
+        'hubtel_client_reference',
+        'hubtel_balance_reference',
+        'coupon_code',
+        'server_priced',
+      ]);
+      const safeMetadata = Object.fromEntries(
+        Object.entries(metadata as Record<string, unknown>).filter(([key]) => !serverOwned.has(key))
+      );
+      if (Object.keys(safeMetadata).length > 0) {
+        const { error: metadataError } = await mergeOrderMetadata({ id }, safeMetadata);
+        if (metadataError) throw new Error(metadataError);
+      }
+    }
 
     if (mark_packed) {
       const { data: profile } = await supabaseAdmin
@@ -131,7 +163,7 @@ export async function PATCH(
       return NextResponse.json({ success: true, packed_by_name: profile?.full_name || null });
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, stockRestored });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

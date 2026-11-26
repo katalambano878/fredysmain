@@ -37,7 +37,7 @@ const EMBED_TABLES_WITH_POSITION = new Set([
 ]);
 
 type Row = Record<string, any>;
-type Op = "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "like" | "ilike" | "is" | "in";
+type Op = "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "like" | "ilike" | "is" | "in" | "cs" | "cd";
 
 interface Filter {
   kind: "cmp" | "in" | "is" | "or" | "notIn" | "notIs" | "raw";
@@ -417,7 +417,9 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any; count: number
       } else if (f.kind === "notIn") {
         const raw = String(f.value).replace(/^\(|\)$/g, "").trim();
         if (!raw) { clauses.push("true"); continue; }
-        const vals = raw.split(",").map((s) => s.trim());
+        // PostgREST allows quoted values: ("failed","returned"). The quotes are not part of the
+        // value; left in, the filter excluded nothing.
+        const vals = raw.split(",").map((s) => s.trim().replace(/^"(.*)"$/, "$1"));
         const ph = vals.map((v) => {
           params.push(v);
           return `$${params.length}`;
@@ -449,7 +451,9 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any; count: number
     if (value === null || value === "null") return `${ident(col)} IS NULL`;
     if (value === true || value === "true") return `${ident(col)} IS TRUE`;
     if (value === false || value === "false") return `${ident(col)} IS FALSE`;
-    return `${ident(col)} IS NOT DISTINCT FROM ${value}`;
+    if (value === "unknown") return `${ident(col)} IS UNKNOWN`;
+    // Anything else used to be pasted into the SQL as written, which let a request run its own SQL.
+    throw new Error(`Unsupported "is" filter value`);
   }
 
   private cmpClause(col: string, op: string, value: any, params: any[]): string {
@@ -922,6 +926,8 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any; count: number
     const valuesSql = rowsIn
       .map((r) => {
         const ph = cols.map((c) => {
+          // A key left undefined means "not given": use the column default, as the real API does.
+          if (r[c] === undefined) return "DEFAULT";
           params.push(normalizeValue(r[c], this.table, c));
           return `$${params.length}`;
         });
@@ -949,10 +955,15 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any; count: number
   private async execUpdate(pool: ReturnType<typeof getPool>): Promise<Row[]> {
     const patch = this.payload as Row;
     const params: any[] = [];
-    const sets = Object.keys(patch).map((c) => {
-      params.push(normalizeValue(patch[c], this.table, c));
-      return `${ident(c)} = $${params.length}`;
-    });
+    // A key left undefined means "leave this column alone". It used to be written as NULL,
+    // which wiped notes and payment details on orders updated with only a status.
+    const sets = Object.keys(patch)
+      .filter((c) => patch[c] !== undefined)
+      .map((c) => {
+        params.push(normalizeValue(patch[c], this.table, c));
+        return `${ident(c)} = $${params.length}`;
+      });
+    if (sets.length === 0) return [];
     const where = this.buildWhere(params);
     let sql = `UPDATE ${ident(this.table)} SET ${sets.join(", ")} ${where}`;
     if (this.returnRows) sql += " RETURNING *";
@@ -1221,6 +1232,11 @@ export function applyPostgrestParams(
       const inner = value.replace(/^\(/, "").replace(/\)$/, "");
       const vals = inner.split(",").map((s) => coerce(s.trim()));
       qb.in(key, vals);
+    } else if (op === "not") {
+      // col=not.<op>.<value>, for example not.is.null or not.in.(a,b)
+      const innerDot = value.indexOf(".");
+      if (innerDot === -1) continue;
+      qb.not(key, value.slice(0, innerDot), value.slice(innerDot + 1));
     } else {
       qb.filter(key, op, value);
     }

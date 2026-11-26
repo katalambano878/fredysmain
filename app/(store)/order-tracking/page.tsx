@@ -181,23 +181,25 @@ function OrderTrackingContent() {
           <div className="bg-white rounded-xl shadow-sm p-8">
             <form onSubmit={handleTrack} className="space-y-6">
               <div>
-                <label className="block text-sm font-semibold text-gray-900 mb-2">
+                <label htmlFor="tracking-order-number-or-tracking-number" className="block text-sm font-semibold text-gray-900 mb-2">
                   Order Number or Tracking Number
                 </label>
-                <input
+                <input id="tracking-order-number-or-tracking-number"
                   type="text"
                   value={orderNumber}
                   onChange={(e) => setOrderNumber(e.target.value)}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-600 focus:border-gray-600"
-                  placeholder="e.g. ORD-1770328211911-915 or SLI-ABC123"
+                  placeholder="e.g. ORD-1770328211911-915 or FRB-ABC123"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-900 mb-2">
+                <label htmlFor="tracking-email" className="block text-sm font-semibold text-gray-900 mb-2">
                   Email Address <span className="text-red-500 font-normal">*</span>
                 </label>
                 <input
+                  id="tracking-email"
+                  autoComplete="email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}

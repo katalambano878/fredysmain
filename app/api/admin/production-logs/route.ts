@@ -10,9 +10,11 @@ function monthBounds(ym: string): { start: string; end: string } {
     const now = new Date();
     const sy = now.getUTCFullYear();
     const sm = now.getUTCMonth() + 1;
+    // The month's real last day. A fixed "31" is not a date in a 30-day month and the list failed.
+    const lastDay = new Date(Date.UTC(sy, sm, 0)).getUTCDate();
     return {
       start: `${sy}-${String(sm).padStart(2, '0')}-01`,
-      end: `${sy}-${String(sm).padStart(2, '0')}-31`,
+      end: `${sy}-${String(sm).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
     };
   }
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();

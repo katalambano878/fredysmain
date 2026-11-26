@@ -9,7 +9,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const page = parseInt(searchParams.get('page') || '1');
   const limit = parseInt(searchParams.get('limit') || '20');
-  const search = searchParams.get('search') || '';
+  // Commas, brackets and dots have a meaning inside an or() filter: drop them from the search text.
+  const search = (searchParams.get('search') || '').replace(/[,()*%\\]/g, ' ').replace(/\s+/g, ' ').trim();
   const sentiment = searchParams.get('sentiment') || '';
   const category = searchParams.get('category') || '';
   const resolved = searchParams.get('resolved') || '';

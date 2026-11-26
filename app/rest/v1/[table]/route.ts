@@ -4,6 +4,7 @@ import {
   applyPostgrestParams,
 } from "@/lib/db/supabase-compat";
 import { isPlainPostgres } from "@/lib/db/mode";
+import { decideInsert, decideRead, mayWrite, resolveCaller, scrub } from "@/lib/db/rest-policy";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -55,9 +56,13 @@ export async function GET(
   const { table } = await ctx.params;
   if (!PG_IDENT.test(table)) return jsonError("Invalid table");
 
+  const select = req.nextUrl.searchParams.get("select") || "*";
+  const caller = await resolveCaller(req);
+  const decision = decideRead(caller, table.toLowerCase(), select);
+  if (!decision.allowed) return jsonError(decision.message, decision.status);
+
   const client = createClient();
   const qb = client.from(table);
-  const select = req.nextUrl.searchParams.get("select") || "*";
   if (preferCount(req)) {
     qb.select(select, {
       count: "exact",
@@ -72,11 +77,16 @@ export async function GET(
   applyPostgrestParams(qb as any, params, {
     preferSingle: preferSingle(req),
   });
+  // Rows this caller is limited to, whatever filters they sent.
+  for (const [column, value] of Object.entries(decision.forced)) {
+    (qb as any).eq(column, value);
+  }
 
   const result = await qb;
   if (result.error) {
-    return jsonError(result.error.message || "Query failed", 400);
+    return jsonError(caller.kind === "staff" ? result.error.message || "Query failed" : "Query failed", 400);
   }
+  result.data = scrub(caller, result.data);
 
   const headers = new Headers(corsHeaders());
   headers.set("Content-Type", "application/json");
@@ -118,15 +128,21 @@ export async function POST(
   const body = await req.json().catch(() => null);
   if (body == null) return jsonError("Invalid JSON body");
 
+  const caller = await resolveCaller(req);
+  const decision = decideInsert(caller, table.toLowerCase(), body);
+  if (!decision.allowed) return jsonError(decision.message, decision.status);
+
   const client = createClient();
-  let qb = client.from(table).insert(body);
-  if (preferReturn(req) || preferSingle(req)) {
+  let qb = client.from(table).insert(decision.rows);
+  if (decision.returnRows && (preferReturn(req) || preferSingle(req))) {
     qb = qb.select("*") as typeof qb;
   }
-  if (preferSingle(req)) qb = qb.single() as typeof qb;
+  if (decision.returnRows && preferSingle(req)) qb = qb.single() as typeof qb;
 
   const result = await qb;
-  if (result.error) return jsonError(result.error.message || "Insert failed", 400);
+  if (result.error) {
+    return jsonError(caller.kind === "staff" ? result.error.message || "Insert failed" : "Could not save that", 400);
+  }
 
   return NextResponse.json(result.data, {
     status: 201,
@@ -146,6 +162,8 @@ export async function PATCH(
 
   const body = await req.json().catch(() => null);
   if (body == null || typeof body !== "object") return jsonError("Invalid JSON body");
+
+  if (!mayWrite(await resolveCaller(req))) return jsonError("Not allowed", 403);
 
   const client = createClient();
   let qb = client.from(table).update(body);
@@ -170,6 +188,8 @@ export async function DELETE(
   }
   const { table } = await ctx.params;
   if (!PG_IDENT.test(table)) return jsonError("Invalid table");
+
+  if (!mayWrite(await resolveCaller(req))) return jsonError("Not allowed", 403);
 
   const client = createClient();
   let qb = client.from(table).delete();

@@ -1,3 +1,4 @@
+import { emailsMatch } from '@/lib/order-access';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
@@ -29,15 +30,15 @@ export async function POST(req: Request) {
     const isUUID =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId);
     const selectFields = includeItems
-      ? 'id, order_number, email, phone, total, subtotal, shipping_total, discount_total, status, payment_status, shipping_address, metadata, created_at, order_items(*)'
-      : 'id, order_number, email, total, subtotal, shipping_total, discount_total, status, payment_status, shipping_address, metadata, created_at';
+      ? 'id, order_number, email, phone, total, subtotal, shipping_total, discount_total, shipping_method, status, payment_status, shipping_address, metadata, created_at, order_items(*)'
+      : 'id, order_number, email, total, subtotal, shipping_total, discount_total, shipping_method, status, payment_status, shipping_address, metadata, created_at';
 
-    let query = supabaseAdmin.from('orders').select(selectFields).ilike('email', email);
+    const query = supabaseAdmin.from('orders').select(selectFields);
     const { data: order, error } = isUUID
       ? await query.eq('id', orderId).maybeSingle()
       : await query.eq('order_number', orderId).maybeSingle();
 
-    if (error || !order) {
+    if (error || !order || !emailsMatch(order.email, email)) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 

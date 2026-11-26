@@ -3,12 +3,14 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { adminFetch } from '@/lib/admin-fetch';
 
 export default function SupportDashboard() {
   const [stats, setStats] = useState<any>(null);
   const [recentConversations, setRecentConversations] = useState<any[]>([]);
   const [openTickets, setOpenTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     fetchDashboard();
@@ -18,7 +20,9 @@ export default function SupportDashboard() {
     setLoading(true);
     try {
       const [statsRes, convosRes, ticketsRes] = await Promise.all([
-        supabase.rpc('get_support_dashboard_stats'),
+        adminFetch('/api/support/stats')
+          .then((data) => ({ data, error: null as string | null }))
+          .catch((e) => ({ data: null, error: e instanceof Error ? e.message : 'failed' })),
         supabase.from('chat_conversations').select('*').order('updated_at', { ascending: false }).limit(8),
         supabase
           .from('support_tickets')
@@ -30,8 +34,14 @@ export default function SupportDashboard() {
       setStats(statsRes.data);
       setRecentConversations(convosRes.data || []);
       setOpenTickets(ticketsRes.data || []);
+      setLoadError(
+        statsRes.error || convosRes.error || ticketsRes.error
+          ? 'Some of this page could not load. Figures shown as a dash are not available right now.'
+          : ''
+      );
     } catch (e) {
       console.error('[Support] dashboard load failed:', e);
+      setLoadError('This page could not load. Check your connection and refresh.');
     } finally {
       setLoading(false);
     }
@@ -70,11 +80,13 @@ export default function SupportDashboard() {
     );
   }
 
+  // A figure that is not available shows as a dash, never as a made-up 0.
+  const show = (value: unknown, suffix = '') => (value == null ? '\u2013' : `${value}${suffix}`);
   const kpis = [
-    { label: 'Open Tickets', value: stats?.tickets?.open || 0, icon: 'ri-ticket-line', color: 'gray', sub: `${stats?.tickets?.urgent || 0} urgent`, link: '/admin/support/tickets' },
-    { label: "Today's Conversations", value: stats?.conversations?.today || 0, icon: 'ri-chat-3-line', color: 'blue', sub: `${stats?.conversations?.total || 0} total`, link: '/admin/support/conversations' },
-    { label: 'AI Resolution Rate', value: `${stats?.ai_performance?.resolution_rate || 0}%`, icon: 'ri-robot-2-line', color: 'purple', sub: `${stats?.ai_performance?.escalated || 0} escalated`, link: '/admin/support/analytics' },
-    { label: 'Avg Satisfaction', value: stats?.satisfaction?.avg_rating || '0', icon: 'ri-star-smile-line', color: 'amber', sub: `${stats?.satisfaction?.total_reviews || 0} reviews`, link: '/admin/support/analytics' },
+    { label: 'Open Tickets', value: show(stats?.tickets?.open), icon: 'ri-ticket-line', color: 'gray', sub: `${show(stats?.tickets?.urgent)} urgent`, link: '/admin/support/tickets' },
+    { label: "Today's Conversations", value: show(stats?.conversations?.today), icon: 'ri-chat-3-line', color: 'blue', sub: `${show(stats?.conversations?.total)} total`, link: '/admin/support/conversations' },
+    { label: 'AI Resolution Rate', value: show(stats?.ai_performance?.resolution_rate, '%'), icon: 'ri-robot-2-line', color: 'purple', sub: `${show(stats?.ai_performance?.escalated)} escalated`, link: '/admin/support/analytics' },
+    { label: 'Avg Satisfaction', value: show(stats?.satisfaction?.avg_rating), icon: 'ri-star-smile-line', color: 'amber', sub: `${show(stats?.satisfaction?.total_reviews)} ratings`, link: '/admin/support/analytics' },
   ];
 
   const colorMap: Record<string, { bg: string; icon: string; ring: string }> = {
@@ -101,6 +113,10 @@ export default function SupportDashboard() {
           </Link>
         </div>
       </div>
+
+      {loadError && (
+        <p role="alert" className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">{loadError}</p>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -129,23 +145,22 @@ export default function SupportDashboard() {
           <div className="flex items-center gap-2">
             <i className="ri-brain-line text-purple-500" />
             <span className="text-gray-500">AI Memories:</span>
-            <span className="font-semibold text-gray-900">{stats?.ai_memories?.total || 0}</span>
-            <span className="text-gray-400">across {stats?.ai_memories?.customers_with_memory || 0} customers</span>
+            <span className="font-semibold text-gray-900">{show(stats?.ai_memories?.total)}</span>
           </div>
           <div className="flex items-center gap-2">
             <i className="ri-book-open-line text-blue-500" />
             <span className="text-gray-500">KB Articles:</span>
-            <span className="font-semibold text-gray-900">{stats?.knowledge_base?.total_articles || 0}</span>
+            <span className="font-semibold text-gray-900">{show(stats?.knowledge_base?.total_articles)}</span>
           </div>
           <div className="flex items-center gap-2">
             <i className="ri-chat-3-line text-gray-600" />
             <span className="text-gray-500">This Week:</span>
-            <span className="font-semibold text-gray-900">{stats?.conversations?.week || 0} conversations</span>
+            <span className="font-semibold text-gray-900">{show(stats?.conversations?.week)} conversations</span>
           </div>
           <div className="flex items-center gap-2">
             <i className="ri-check-double-line text-gray-600" />
             <span className="text-gray-500">Resolved This Week:</span>
-            <span className="font-semibold text-gray-900">{stats?.tickets?.resolved_week || 0} tickets</span>
+            <span className="font-semibold text-gray-900">{show(stats?.tickets?.resolved_week)} tickets</span>
           </div>
         </div>
       </div>

@@ -304,18 +304,18 @@ export default function Home() {
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
             <div>
               <p className="text-xs font-semibold tracking-[0.25em] text-brand-green uppercase">
-                Trending now
+                Our picks
               </p>
               <h2 className="mt-1 text-2xl sm:text-3xl font-extrabold text-gray-900">
-                Styles families love most
+                Featured outfits
               </h2>
             </div>
             <Link
-              href="/shop?sort=bestsellers"
+              href="/shop"
               className="inline-flex items-center text-sm font-medium text-gray-800 hover:text-brand-greenDark"
             >
-              View bestselling outfits
-              <i className="ri-arrow-right-line ml-1" />
+              View all outfits
+              <i className="ri-arrow-right-line ml-1" aria-hidden />
             </Link>
           </div>
 
@@ -391,7 +391,7 @@ export default function Home() {
                       product.product_images?.[0]?.url ||
                       '/frebys-logo.png'
                     }
-                    rating={product.rating_avg || 5}
+                    rating={product.rating_avg || 0}
                     reviewCount={product.review_count || 0}
                     badge={onSale ? 'Sale' : product.featured ? 'Featured' : 'Trending'}
                     inStock={effectiveStock > 0}
@@ -453,13 +453,22 @@ export default function Home() {
                       </p>
                       <div className="mt-1.5 flex items-center justify-between">
                         <span className="text-xs sm:text-sm font-bold text-gray-900">
-                          GH₵{Number(product.price || 0).toFixed(2)}
+                          {(() => {
+                            // Most outfits are priced per size, so the product's own price is 0.
+                            const sizePrices = (product.product_variants || [])
+                              .map((v: any) => Number(v.price))
+                              .filter((n: number) => n > 0);
+                            const own = Number(product.price) || 0;
+                            if (sizePrices.length) return `From GH₵${Math.min(...sizePrices).toFixed(2)}`;
+                            return own > 0 ? `GH₵${own.toFixed(2)}` : 'See sizes';
+                          })()}
                         </span>
                         <Link
                           href={`/product/${product.slug}`}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-green text-white hover:bg-brand-greenDark text-sm"
+                          aria-label={`View ${product.name}`}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-greenDark text-white hover:bg-[#166d1f] text-sm"
                         >
-                          <i className="ri-arrow-right-line" />
+                          <i className="ri-arrow-right-line" aria-hidden />
                         </Link>
                       </div>
                     </div>

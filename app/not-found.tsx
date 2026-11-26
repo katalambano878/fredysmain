@@ -1,9 +1,24 @@
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import NotFoundContent from '@/components/NotFoundContent';
+
+export const metadata: Metadata = {
+  title: 'Page not found',
+  robots: { index: false, follow: true },
+};
+
 export default function NotFound() {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen text-center px-4">
-        <h1 className="text-5xl md:text-5xl font-semibold text-gray-100">404</h1>
-        <h1 className="text-2xl md:text-3xl font-semibold mt-6">This page has not been generated</h1>
-        <p className="mt-4 text-xl md:text-2xl text-gray-500">Tell me what you would like on this page</p>
+  return (
+    <main className="min-h-screen bg-white">
+      <div className="border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <Link href="/" aria-label="Freby’s Fashion GH home">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/frebys-logo.png" alt="Freby’s Fashion GH" className="h-10 w-auto" />
+          </Link>
+        </div>
       </div>
-    );
-  }
+      <NotFoundContent />
+    </main>
+  );
+}

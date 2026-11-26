@@ -86,3 +86,16 @@ export function maskEmail(email: string): string {
     if (!domain) return '***';
     return local.slice(0, 2) + '***@' + domain;
 }
+
+/**
+ * Make free text safe to place inside a PostgREST-style filter string such as
+ * `name.ilike.%term%`. Commas, brackets and dots separate conditions there, and
+ * % and _ are wildcards, so they are replaced with spaces.
+ */
+export function filterTerm(value: unknown, maxLength = 80): string {
+  return String(value ?? '')
+    .replace(/[,()%_\\.*:"']/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+}

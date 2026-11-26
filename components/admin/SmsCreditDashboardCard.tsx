@@ -1,84 +1,54 @@
+'use client';
+
 import Link from 'next/link';
-import type { DashboardSmsCredit } from '@/lib/sms-credit-cache';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 
 type Props = {
-  smsCredit: DashboardSmsCredit;
+  smsCredit?: unknown;
+  buySmsHref?: string;
 };
 
-const TOP_UP_CLASS =
-  'inline-flex items-center justify-center px-3 py-1.5 bg-gray-900 text-white text-xs font-semibold rounded-lg hover:bg-gray-800 transition-colors';
+/** Red bar only while the shop has no texts left. It goes away after a top-up. */
+export function SmsCreditDashboardCard({ buySmsHref = '/admin/sms-credit' }: Props) {
+  const [empty, setEmpty] = useState(false);
 
-export function SmsCreditDashboardCard({ smsCredit }: Props) {
-  const blinkLow = smsCredit.status === 'ok' && smsCredit.level === 'low';
-  const blinkEmpty = smsCredit.status === 'ok' && smsCredit.level === 'empty';
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const headers = new Headers();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) headers.set('Authorization', `Bearer ${session.access_token}`);
+        if (!headers.has('Authorization')) {
+          const match = document.cookie.match(/(?:^|; )sb-access-token=([^;]*)/);
+          if (match?.[1]) headers.set('Authorization', `Bearer ${decodeURIComponent(match[1])}`);
+        }
+        const res = await fetch('/api/admin/sms-credit', { headers, credentials: 'include', cache: 'no-store' });
+        const json = await res.json().catch(() => null);
+        if (cancelled || !res.ok || !json?.configured) return;
+        const sms = Number(json.sms_left);
+        if (Number.isFinite(sms) && sms <= 0) setEmpty(true);
+      } catch {
+        /* Buy SMS stays in the menu. */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const borderClass =
-    smsCredit.status === 'ok' && smsCredit.level === 'empty'
-      ? 'border-red-300'
-      : smsCredit.status === 'ok' && smsCredit.level === 'low'
-        ? 'border-amber-300'
-        : 'border-gray-200';
-
-  const iconBg =
-    smsCredit.status === 'ok' && smsCredit.level === 'empty'
-      ? 'bg-red-100 text-red-700'
-      : smsCredit.status === 'ok' && smsCredit.level === 'low'
-        ? 'bg-amber-100 text-amber-700'
-        : 'bg-blue-100 text-blue-700';
-
-  let mainValue: string;
-  let subline: string | null = null;
-
-  if (smsCredit.status === 'not_connected') {
-    mainValue = 'SMS is not connected';
-  } else if (smsCredit.status === 'load_failed') {
-    mainValue = '—';
-    subline = 'The balance could not be loaded';
-  } else {
-    mainValue = smsCredit.sms_left.toLocaleString('en-GH');
-    if (smsCredit.level === 'low') {
-      subline = 'Running low, top up soon';
-    } else if (smsCredit.level === 'empty') {
-      subline = 'SMS credit is empty, texts are not being sent';
-    } else {
-      subline = 'texts left';
-    }
-  }
-
-  const sublineClass =
-    smsCredit.status === 'ok' && smsCredit.level === 'empty'
-      ? 'text-red-700 font-medium'
-      : smsCredit.status === 'ok' && smsCredit.level === 'low'
-        ? 'text-amber-700 font-medium'
-        : 'text-gray-600';
-
-  const showTopUp = smsCredit.status !== 'not_connected';
+  if (!empty) return null;
 
   return (
-    <div
-      className={`bg-white rounded-xl shadow-sm border p-6 hover:shadow-md transition-shadow ${borderClass} ${
-        blinkEmpty ? 'sms-credit-double-blink-empty' : blinkLow ? 'sms-credit-double-blink' : ''
-      }`}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <div className={`w-12 h-12 flex items-center justify-center rounded-lg ${iconBg}`}>
-          <i className="ri-message-2-line text-2xl" aria-hidden />
-        </div>
-        {showTopUp ? (
-          <Link href="/admin/sms-credit" className={TOP_UP_CLASS}>
-            Top up
-          </Link>
-        ) : null}
-      </div>
-      <h3
-        className={`font-bold text-gray-900 mb-1 tabular-nums ${
-          smsCredit.status === 'not_connected' ? 'text-base leading-snug' : 'text-2xl'
-        }`}
-      >
-        {mainValue}
-      </h3>
-      <p className="text-gray-600 text-sm">SMS credit</p>
-      {subline ? <p className={`mt-2 text-sm ${sublineClass}`}>{subline}</p> : null}
+    <div role="alert" className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-red-700 px-4 py-3 text-white lg:px-6">
+      <svg viewBox="0 0 24 24" aria-hidden className="h-5 w-5 flex-none" fill="currentColor">
+        <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 14h-2v-2h2v2Zm0-4h-2V6h2v6Z" />
+      </svg>
+      <p className="min-w-0 flex-1 font-medium">SMS credit is empty. Payment reminders and order texts are not being sent.</p>
+      <Link href={buySmsHref} className="inline-flex h-11 flex-none items-center rounded-full bg-white px-5 font-semibold text-gray-900 hover:bg-red-50 transition-colors">
+        Top up now
+      </Link>
     </div>
   );
 }

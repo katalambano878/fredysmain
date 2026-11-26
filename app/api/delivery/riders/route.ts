@@ -98,15 +98,34 @@ export async function DELETE(req: NextRequest) {
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
-    const { data: active } = await supabaseAdmin
+    // Deleting a rider also deletes every delivery they ever did (and its history and fees).
+    // A rider with any delivery on record is switched to inactive instead, and stays in the reports.
+    const { data: history, error: historyError } = await supabaseAdmin
         .from('delivery_assignments')
-        .select('id')
+        .select('id, status')
         .eq('rider_id', id)
-        .in('status', ['assigned', 'picked_up', 'in_transit'])
-        .limit(1);
+        .limit(1000);
+    if (historyError) return NextResponse.json({ error: historyError.message }, { status: 500 });
 
-    if (active && active.length > 0) {
-        return NextResponse.json({ error: 'Cannot delete a rider with active deliveries. Set them inactive first.' }, { status: 400 });
+    const assignments = history || [];
+    if (assignments.some((a: any) => ['assigned', 'picked_up', 'in_transit'].includes(a.status))) {
+        return NextResponse.json(
+            { error: 'This rider has deliveries in progress. Finish or reassign them first.' },
+            { status: 400 }
+        );
+    }
+
+    if (assignments.length > 0) {
+        const { error: inactiveError } = await supabaseAdmin
+            .from('riders')
+            .update({ status: 'inactive', updated_at: new Date().toISOString() })
+            .eq('id', id);
+        if (inactiveError) return NextResponse.json({ error: inactiveError.message }, { status: 500 });
+        return NextResponse.json({
+            success: true,
+            deactivated: true,
+            message: 'This rider has past deliveries, so they were set to inactive instead of deleted. Their delivery history is kept.',
+        });
     }
 
     const { error } = await supabaseAdmin.from('riders').delete().eq('id', id);

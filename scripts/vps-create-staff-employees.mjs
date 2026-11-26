@@ -14,16 +14,25 @@ const STAFF = [
     // Admin can rename in Staff Management if needed.
     fullName: 'Rica',
     phone: '0594954031',
-    password: 'rica123',
+    // Passwords are never kept in this file. Pass them when you run the script:
+    //   STAFF_PASSWORD_1=... STAFF_PASSWORD_2=... node vps-create-staff-employees.mjs
+    password: process.env.STAFF_PASSWORD_1,
     email: '0594954031@staff.frebys.local',
   },
   {
     fullName: 'Charity Azaanga',
     phone: '0547105061',
-    password: '#helloworld',
+    password: process.env.STAFF_PASSWORD_2,
     email: '0547105061@staff.frebys.local',
   },
 ];
+
+for (const person of STAFF) {
+  if (!person.password || person.password.length < 8) {
+    console.error(`Set a password of at least 8 characters for ${person.fullName} (STAFF_PASSWORD_1 / STAFF_PASSWORD_2).`);
+    process.exit(1);
+  }
+}
 
 async function upsertStaff(client, person) {
   const email = person.email.toLowerCase();

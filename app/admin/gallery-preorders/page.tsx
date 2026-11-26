@@ -33,6 +33,7 @@ function getStatusStyle(status: string) {
 export default function GalleryPreordersPage() {
   const [preorders, setPreorders] = useState<GalleryPreorder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
@@ -44,12 +45,13 @@ export default function GalleryPreordersPage() {
     try {
       setLoading(true);
       const res = await fetch('/api/admin/gallery-preorders', { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        setPreorders(Array.isArray(data) ? data : []);
-      }
+      if (!res.ok) throw new Error(res.status === 401 ? 'Your session has expired. Sign in again.' : 'The requests could not load.');
+      const data = await res.json();
+      setPreorders(Array.isArray(data) ? data : []);
+      setLoadError('');
     } catch (err) {
       console.error('Failed to fetch gallery preorders:', err);
+      setLoadError(err instanceof Error ? err.message : 'The requests could not load.');
     } finally {
       setLoading(false);
     }
@@ -68,6 +70,8 @@ export default function GalleryPreordersPage() {
         setPreorders((prev) =>
           prev.map((p) => (p.id === id ? { ...p, status: newStatus as GalleryPreorder['status'], updated_at: new Date().toISOString() } : p)),
         );
+      } else {
+        alert('The status was not saved. Try again.');
       }
     } catch (err) {
       console.error('Failed to update status:', err);
@@ -118,6 +122,13 @@ export default function GalleryPreordersPage() {
         <div className="p-12 text-center text-gray-500">
           <i className="ri-loader-4-line animate-spin text-3xl mb-2 inline-block" />
           <p>Loading preorders...</p>
+        </div>
+      ) : loadError ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <p className="font-semibold text-gray-900">{loadError}</p>
+          <button onClick={fetchPreorders} className="mt-3 px-4 py-2 text-sm font-semibold border border-gray-300 rounded-lg hover:bg-gray-50">
+            Try again
+          </button>
         </div>
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">

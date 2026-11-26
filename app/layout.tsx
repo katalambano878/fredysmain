@@ -113,6 +113,7 @@ export const metadata: Metadata = {
     images: [
       {
         url: shareImageUrl,
+        secureUrl: shareImageUrl,
         width: 593,
         height: 421,
         type: "image/png",
@@ -127,8 +128,10 @@ export const metadata: Metadata = {
       "Unique kids ready-to-wear outfits for all occasions. Worldwide delivery from Ghana.",
     images: [shareImageUrl],
   },
+  // Each page is its own canonical URL. (This used to name the home page on every page,
+  // which told search engines the whole shop was a copy of the home page.)
   alternates: {
-    canonical: siteUrl,
+    canonical: './',
   },
 };
 
@@ -145,16 +148,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* Social share preview (WhatsApp, Facebook, LinkedIn) — explicit absolute og:image */}
-        <meta property="og:image" content={shareImageUrl} />
-        <meta property="og:image:secure_url" content={shareImageUrl} />
-        <meta property="og:image:type" content="image/png" />
-        <meta property="og:image:width" content="593" />
-        <meta property="og:image:height" content="421" />
-        <meta property="og:image:alt" content="Freby’s Fashion GH logo" />
-        <meta name="twitter:image" content={shareImageUrl} />
-        <link rel="image_src" href={shareImageUrl} />
-
         {/* PWA Meta Tags */}
         <meta name="theme-color" content="#166d1f" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -197,7 +190,7 @@ export default function RootLayout({
                   "foundingLocation": "Haatso, Accra, Ghana",
                   "knowsAbout": ["Kids fashion", "Ankara fabric", "African print clothing", "Children ready-to-wear", "Kids occasion outfits"],
                   "sameAs": ["https://wa.me/233244720197"],
-                  "contactPoint": { "@type": "ContactPoint", "contactType": "customer service", "telephone": "+233244720197", "email": "info@frebysfashion.com", "availableLanguage": ["English"] }
+                  "contactPoint": { "@type": "ContactPoint", "contactType": "customer service", "telephone": "+233244720197", "email": "hello@frebysfashion.com", "availableLanguage": ["English"] }
                 },
                 {
                   "@type": "ClothingStore",
@@ -206,7 +199,7 @@ export default function RootLayout({
                   "url": siteUrl,
                   "image": [shareImageUrl],
                   "telephone": "+233244720197",
-                  "email": "info@frebysfashion.com",
+                  "email": "hello@frebysfashion.com",
                   "priceRange": "$$",
                   "currenciesAccepted": "GHS",
                   "paymentAccepted": "Mobile Money, Cash",

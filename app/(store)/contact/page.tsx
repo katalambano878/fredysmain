@@ -39,6 +39,12 @@ export default function ContactPage() {
     fetchContactContent();
   }, []);
 
+  // "Get help" on an order opens this page with the subject filled in.
+  useEffect(() => {
+    const subject = new URLSearchParams(window.location.search).get('subject');
+    if (subject) setFormData((prev) => (prev.subject ? prev : { ...prev, subject: subject.slice(0, 150) }));
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -68,15 +74,26 @@ export default function ContactPage() {
         console.error('contact_submissions insert error:', error.message);
       }
 
-      // Send Contact Notification
-      fetch('/api/notifications', {
+      // Email the shop as well. The message counts as sent when at least one of the two worked.
+      const notified = await fetch('/api/notifications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'contact',
           payload: formData
         })
-      }).catch(err => console.error('Contact notification error:', err));
+      })
+        .then((res) => res.ok)
+        .catch((err) => {
+          console.error('Contact notification error:', err);
+          return false;
+        });
+
+      if (error && !notified) {
+        // Nothing reached us: say so and keep what the shopper typed.
+        setSubmitStatus('error');
+        return;
+      }
 
       setSubmitStatus('success');
       setFormData({ name: '', email: '', phone: '', subject: '', message: '' });
@@ -108,7 +125,7 @@ export default function ContactPage() {
       title: 'Email Us',
       value: contactEmail,
       link: `mailto:${contactEmail}`,
-      description: 'We respond within 24 hours'
+      description: 'Email us any time'
     },
     {
       icon: 'ri-whatsapp-line',
@@ -121,7 +138,7 @@ export default function ContactPage() {
       icon: 'ri-map-pin-line',
       title: 'Visit Us',
       value: contactAddress,
-      link: 'https://maps.google.com',
+      link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("Freby's Fashion GH Haatso Accra")}`,
       description: "Mon-Sat, 9am-6pm",
     }
   ];
@@ -211,7 +228,7 @@ export default function ContactPage() {
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-transparent text-sm"
-                  placeholder="john@example.com"
+                  autoComplete="email"
                 />
               </div>
 
@@ -267,7 +284,7 @@ export default function ContactPage() {
               {submitStatus === 'success' && (
                 <div className="bg-gray-100 border border-gray-200 text-gray-900 px-4 py-3 rounded-xl">
                   <i className="ri-check-line mr-2"></i>
-                  Message sent successfully! We'll respond within 24 hours.
+                  Message sent. We will get back to you as soon as we can.
                 </div>
               )}
 

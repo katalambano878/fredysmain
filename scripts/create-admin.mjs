@@ -46,8 +46,13 @@ async function findUserByEmail(supabase, email) {
 const env = loadEnv();
 const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
-const adminEmail = env.ADMIN_EMAIL || 'admin@delizbeauty.com';
-const adminPassword = env.ADMIN_PASSWORD || 'Admin123!';
+// No built-in email or password: a default here becomes a known login on every store.
+const adminEmail = env.ADMIN_EMAIL;
+const adminPassword = env.ADMIN_PASSWORD;
+if (!adminEmail || !adminPassword || adminPassword.length < 10) {
+  console.error('Set ADMIN_EMAIL and ADMIN_PASSWORD (at least 10 characters) in .env.local before running this.');
+  process.exit(1);
+}
 
 if (!supabaseUrl || !serviceRoleKey) {
   console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local');

@@ -15,6 +15,32 @@ export default function AnalyticsPage() {
   const [categoryRevenue, setCategoryRevenue] = useState<any[]>([]);
   const [topProducts, setTopProducts] = useState<any[]>([]);
 
+  /** Download the report on screen (sales by day, revenue by category, top products) as a spreadsheet file. */
+  const exportReport = () => {
+    const quote = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const lines: string[] = [];
+    lines.push(['Sales by day'].map(quote).join(','));
+    lines.push(['Date', 'Sales (GHS)'].map(quote).join(','));
+    salesData.forEach((d: any) => lines.push([d.date, Number(d.sales || 0).toFixed(2)].map(quote).join(',')));
+    lines.push('');
+    lines.push(['Revenue by category'].map(quote).join(','));
+    lines.push(['Category', 'Revenue (GHS)'].map(quote).join(','));
+    categoryRevenue.forEach((c: any) => lines.push([c.name, Number(c.value || 0).toFixed(2)].map(quote).join(',')));
+    lines.push('');
+    lines.push(['Top products'].map(quote).join(','));
+    if (topProducts.length > 0) {
+      const columns = Object.keys(topProducts[0]).filter((key) => typeof topProducts[0][key] !== 'object');
+      lines.push(columns.map(quote).join(','));
+      topProducts.forEach((p: any) => lines.push(columns.map((key) => quote(p[key])).join(',')));
+    }
+    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `analytics-${timeRange}-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const [metrics, setMetrics] = useState({
     revenue: 0,
     revenueGrowth: 0,
@@ -104,7 +130,7 @@ export default function AnalyticsPage() {
               <option value="90days">Last 90 Days</option>
               <option value="year">This Year</option>
             </select>
-            <button className="bg-gray-900 hover:bg-gray-800 text-white px-6 py-3 rounded-lg font-semibold transition-colors whitespace-nowrap cursor-pointer flex items-center justify-center">
+            <button onClick={exportReport} disabled={loading || salesData.length === 0} className="bg-gray-900 hover:bg-gray-800 text-white px-6 py-3 rounded-lg font-semibold transition-colors whitespace-nowrap cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
               <i className="ri-download-line mr-2"></i>
               Export
             </button>

@@ -61,7 +61,7 @@ export default function AdminCategoriesPage() {
   };
 
   const handleDelete = async (categoryId: string) => {
-    if (confirm('Are you sure you want to delete this category? This action cannot be undone.')) {
+    if (confirm('Delete this category? Products filed under it stay in the shop but will have no category. This cannot be undone.')) {
       try {
         const res = await fetch(`/api/admin/categories/${categoryId}`, { method: 'DELETE', credentials: 'include' });
         const data = await res.json().catch(() => ({}));
@@ -127,7 +127,12 @@ export default function AdminCategoriesPage() {
         image_url: formData.image_url,
         parent_id: formData.parent_id || null,
         status: formData.status,
+        // Keep whatever else the category already stores (its icon, chip text and colour, which
+        // the shop's home page reads). Saving used to replace all of it with just "featured".
         metadata: {
+          ...(showEditModal && editingCategory?.metadata && typeof editingCategory.metadata === 'object'
+            ? editingCategory.metadata
+            : {}),
           featured: formData.featured
         }
       };

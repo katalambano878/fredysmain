@@ -19,6 +19,7 @@ export default function ProductsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [categories, setCategories] = useState<any[]>([]);
 
   // Statistics
@@ -40,6 +41,18 @@ export default function ProductsPage() {
     fetchCategories();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run when sortBy changes
   }, [sortBy]);
+
+  // Links such as /admin/products?filter=low-stock (from the dashboard) open with that filter on.
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get('filter');
+    if (wanted === 'low-stock') setStockFilter('low_stock');
+    if (wanted === 'out-of-stock') setStockFilter('out_of_stock');
+  }, []);
+
+  // A selection made under one search or filter must not carry over to rows that are now hidden.
+  useEffect(() => {
+    setSelectedProducts([]);
+  }, [searchQuery, stockFilter, genderFilter, categoryFilter, statusFilter]);
 
   const fetchCategories = async () => {
     const { data } = await supabase.from('categories').select('name');
@@ -67,19 +80,24 @@ export default function ProductsPage() {
           outOfStock: list.filter((p: any) => p.quantity === 0).length,
           active: list.filter((p: any) => p.status === 'active').length
         });
+        setLoadError('');
       }
     } catch (error) {
       console.error('Error fetching products:', error);
+      setLoadError(error instanceof Error ? error.message : 'The products could not load.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleSelectAll = () => {
-    if (selectedProducts.length === products.length) {
+    // Only the products on screen. With a search or filter on, "select all" used to pick every
+    // product in the shop, so a bulk delete removed rows that were not even visible.
+    const shown = filteredProducts.map(p => p.id);
+    if (shown.length > 0 && shown.every(id => selectedProducts.includes(id))) {
       setSelectedProducts([]);
     } else {
-      setSelectedProducts(products.map(p => p.id));
+      setSelectedProducts(shown);
     }
   };
 
@@ -105,7 +123,7 @@ export default function ProductsPage() {
   };
 
   const handleBulkDelete = async () => {
-    if (confirm(`Are you sure you want to delete ${selectedProducts.length} products?`)) {
+    if (confirm(`Delete the ${selectedProducts.length} selected product${selectedProducts.length === 1 ? '' : 's'}? This cannot be undone.`)) {
       let failed = 0;
       for (const id of selectedProducts) {
         const res = await fetch(`/api/admin/products/${id}`, { method: 'DELETE', credentials: 'include' });
@@ -322,6 +340,14 @@ export default function ProductsPage() {
             <i className="ri-loader-4-line animate-spin text-3xl mb-2 inline-block"></i>
             <p>Loading products...</p>
           </div>
+        ) : loadError ? (
+          <div className="p-12 text-center">
+            <p className="font-medium text-gray-900">The products could not load.</p>
+            <p className="text-sm text-gray-600 mt-1">{loadError}</p>
+            <button onClick={fetchProducts} className="mt-3 px-4 py-2 text-sm font-semibold border border-gray-300 rounded-lg hover:bg-gray-50">
+              Try again
+            </button>
+          </div>
         ) : filteredProducts.length === 0 ? (
           <div className="p-12 text-center text-gray-500">
             <i className="ri-inbox-line text-4xl mb-4 text-gray-300 inline-block"></i>
@@ -336,7 +362,8 @@ export default function ProductsPage() {
                   <th className="py-4 px-6">
                     <input
                       type="checkbox"
-                      checked={selectedProducts.length === products.length && products.length > 0}
+                      checked={filteredProducts.length > 0 && filteredProducts.every(p => selectedProducts.includes(p.id))}
+                      aria-label="Select all products shown"
                       onChange={handleSelectAll}
                       className="w-4 h-4 text-gray-900 border-gray-300 rounded focus:ring-gray-600 cursor-pointer"
                     />
@@ -389,7 +416,7 @@ export default function ProductsPage() {
                     </td>
                     <td className="py-4 px-4 text-gray-700 text-sm font-mono">{product.sku || '-'}</td>
                     <td className="py-4 px-4 text-gray-700 text-sm">{product.category}</td>
-                    <td className="py-4 px-4 font-semibold text-gray-900 whitespace-nowrap">{moneyLabel(product.price)}</td>
+                    <td className="py-4 px-4 font-semibold text-gray-900 whitespace-nowrap">{product.price_is_from ? 'From ' : ''}{moneyLabel(product.display_price ?? product.price)}</td>
                     <td className="py-4 px-4 text-gray-700">
                       {product.stock}
                       {product.stock <= (product.metadata?.low_stock_threshold || 3) && product.stock > 0 && (
@@ -461,7 +488,7 @@ export default function ProductsPage() {
                 <h3 className="font-semibold text-gray-900 mb-1 line-clamp-2">{product.name}</h3>
                 <p className="text-sm text-gray-600 mb-2">{product.category}</p>
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-lg font-bold text-gray-900">GH₵ {product.price}</p>
+                  <p className="text-lg font-bold text-gray-900">{product.price_is_from ? 'From ' : ''}{moneyLabel(product.display_price ?? product.price)}</p>
                 </div>
                 <div className="flex items-center justify-between text-sm text-gray-600 mb-3 pb-3 border-b border-gray-200">
                   <span>Stock: {product.stock}</span>

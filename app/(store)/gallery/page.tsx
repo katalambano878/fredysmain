@@ -7,7 +7,7 @@ const siteUrl =
   process.env.NEXT_PUBLIC_APP_URL || 'https://www.frebysfashion.com';
 
 export const metadata: Metadata = {
-  title: 'Gallery | Freby\u2019s Fashion GH',
+  title: 'Gallery',
   description:
     'Unique kids ready-to-wear outfits for all occasions from Freby\u2019s Fashion GH in Haatso, Accra.',
   alternates: { canonical: `${siteUrl}/gallery` },
@@ -17,6 +17,7 @@ export const metadata: Metadata = {
       'Unique kids ready-to-wear outfits for all occasions \u2014 handmade in Haatso, Accra with worldwide delivery.',
     url: `${siteUrl}/gallery`,
     type: 'website',
+    images: [{ url: `${siteUrl}/frebys-logo.png`, width: 593, height: 421, alt: 'Freby\u2019s Fashion GH logo' }],
   },
 };
 
@@ -25,7 +26,7 @@ export default function GalleryPage() {
     <div className="min-h-screen bg-white">
       <PageHero
         title="Gallery"
-        subtitle="A walk through our dresses and creations \u2014 tap any photo to view it larger."
+        subtitle="A walk through our dresses and creations. Tap any photo to view it larger."
         image={HERO_IMAGES.gallery}
         imagePosition="50% 30%"
       />

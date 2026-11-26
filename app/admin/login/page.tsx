@@ -24,10 +24,12 @@ export default function AdminLoginPage() {
       setError('Your role has been disabled by the administrator. Contact your Super Admin for access.');
     } else if (errorParam === 'unauthorized') {
       setError('You do not have permission to access the admin panel.');
+    } else if (errorParam === 'session_expired') {
+      setError('You were signed out because your session ended. Sign in again to carry on.');
     } else if (errorParam === 'no_profile') {
-      setError('No admin profile found. From project root run: node scripts/create-admin.mjs');
-    } else if (errorParam === 'config') {
-      setError('Server misconfiguration: SUPABASE_SERVICE_ROLE_KEY is not set in .env.local. Add it from Supabase Dashboard → Settings → API.');
+      setError('This login has no admin profile. Ask the shop administrator to add you as staff.');
+    } else if (errorParam === 'config' || errorParam === 'misconfigured') {
+      setError('The admin area is not available right now because of a setup problem on the server. Contact your website developer.');
     }
   }, [searchParams]);
 
@@ -49,26 +51,31 @@ export default function AdminLoginPage() {
       // calling Supabase Auth. The server-side route looks up the admin/staff
       // profile by phone when needed and never leaks account existence for
       // non-admin users.
-      let emailForAuth = identifier.trim();
-      if (!emailForAuth.includes('@')) {
+      const typed = identifier.trim();
+      let data: { session: { access_token: string; refresh_token: string } | null };
+
+      if (!typed.includes('@')) {
+        // A phone number: the server checks it together with the password and returns the session.
         const resolveRes = await fetch('/api/admin/resolve-login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ identifier: emailForAuth })
+          body: JSON.stringify({ identifier: typed, password })
         });
         const resolveJson = await resolveRes.json().catch(() => ({}));
-        if (!resolveRes.ok || !resolveJson.email) {
-          throw new Error(resolveJson.error || 'No admin account matches that phone number.');
+        if (!resolveRes.ok || !resolveJson.session) {
+          throw new Error(resolveJson.error || 'That phone number or password is not right.');
         }
-        emailForAuth = resolveJson.email;
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: resolveJson.session.access_token,
+          refresh_token: resolveJson.session.refresh_token,
+        });
+        if (sessionError) throw sessionError;
+        data = { session: resolveJson.session };
+      } else {
+        const result = await supabase.auth.signInWithPassword({ email: typed, password });
+        if (result.error) throw result.error;
+        data = { session: result.data.session };
       }
-
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: emailForAuth,
-        password
-      });
-
-      if (error) throw error;
 
       if (data.session) {
         // Set auth cookie so middleware can verify the session server-side.
@@ -78,12 +85,15 @@ export default function AdminLoginPage() {
         document.cookie = `sb-refresh-token=${data.session.refresh_token}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax${secure}`;
 
         // Full-page redirect so the first request to /admin includes the cookie (avoids RSC fetch race).
-        window.location.href = '/admin';
+        // Go back to the page that asked for the sign-in, when it is one of the admin pages.
+        const wanted = searchParams.get('redirect') || '';
+        const safe = wanted.startsWith('/admin') && !wanted.startsWith('/admin/login') && !wanted.includes('//');
+        window.location.href = safe ? wanted : '/admin';
       }
     } catch (err: any) {
       const msg = err?.message || 'Login failed';
       if (msg.toLowerCase().includes('invalid login credentials') || msg.toLowerCase().includes('invalid_credentials')) {
-        setError('Invalid credentials. Check your email/phone and password, or run: node scripts/create-admin.mjs');
+        setError('That email or password is not right. Check both and try again.');
       } else {
         setError(msg);
       }
@@ -160,9 +170,10 @@ export default function AdminLoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 w-5 h-5 flex items-center justify-center"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-900 w-5 h-5 flex items-center justify-center"
                 >
-                  <i className={`${showPassword ? 'ri-eye-off-line' : 'ri-eye-line'} text-lg`}></i>
+                  <i className={`${showPassword ? 'ri-eye-off-line' : 'ri-eye-line'} text-lg`} aria-hidden></i>
                 </button>
               </div>
             </div>

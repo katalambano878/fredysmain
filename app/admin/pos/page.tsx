@@ -21,6 +21,9 @@ interface Product {
     id: string;
     name: string;
     price: number;
+    /** What to show on the product card: the lowest size price when the product is priced per size. */
+    displayPrice?: number;
+    priceIsFrom?: boolean;
     quantity: number;
     category: string;
     image: string;
@@ -50,6 +53,8 @@ interface HeldOrder {
     customer: Customer | null;
     note: string;
     heldAt: number;
+    /** The whole-order discount (%) that was set when the order was put on hold. */
+    orderDiscount?: number;
 }
 
 interface DailySummary {
@@ -241,6 +246,7 @@ export default function POSPage() {
     const [orderDiscount, setOrderDiscount] = useState(0);
     const [showDiscountInput, setShowDiscountInput] = useState(false);
     const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
+    const [dailySummaryFailed, setDailySummaryFailed] = useState(false);
     const [showDailySummary, setShowDailySummary] = useState(false);
     const [lastReceipt, setLastReceipt] = useState<any>(null);
     const [cashierName, setCashierName] = useState('');
@@ -276,6 +282,12 @@ export default function POSPage() {
         });
 
         fetchDailySummary();
+
+        // Stock changes while the till is open (online orders, another till): refresh when the cashier comes back to it.
+        const onFocus = () => { fetchData(true); fetchDailySummary(); };
+        window.addEventListener('focus', onFocus);
+        return () => window.removeEventListener('focus', onFocus);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
     }, []);
 
     // ─── Keyboard Shortcuts ─────────────────────────────────────────────────
@@ -286,7 +298,13 @@ export default function POSPage() {
             const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
 
             if (e.key === 'Escape') {
-                if (showCheckoutModal) { setShowCheckoutModal(false); e.preventDefault(); }
+                if (showCheckoutModal) {
+                    // On the success screen, Esc finishes the sale the same way "New Sale" does.
+                    // Just hiding the window left the finished order behind, so the next Charge reopened it.
+                    if (completedOrder) resetCheckout();
+                    else setShowCheckoutModal(false);
+                    e.preventDefault();
+                }
                 else if (showHeldOrders) { setShowHeldOrders(false); e.preventDefault(); }
                 else if (showDailySummary) { setShowDailySummary(false); e.preventDefault(); }
                 return;
@@ -337,7 +355,7 @@ export default function POSPage() {
         window.addEventListener('keydown', handleShortcut);
         return () => window.removeEventListener('keydown', handleShortcut);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- holdCurrentOrder, toggleFullscreen, emptyCart defined later; effect runs after mount
-    }, [cart, showCheckoutModal, showHeldOrders, showDailySummary]);
+    }, [cart, showCheckoutModal, showHeldOrders, showDailySummary, completedOrder]);
 
     // ─── Fullscreen ─────────────────────────────────────────────────────────
 
@@ -359,9 +377,10 @@ export default function POSPage() {
 
     // ─── Data Fetching ──────────────────────────────────────────────────────
 
-    const fetchData = async () => {
+    /** Load products and customers. `quiet` refreshes stock in the background without the loading screen. */
+    const fetchData = async (quiet = false) => {
         try {
-            setLoading(true);
+            if (!quiet) setLoading(true);
             const { data: prodData } = await supabase
                 .from('products')
                 .select(`id, name, price, quantity, sku, metadata, categories(name), product_images(url, position, media_type), product_variants(id, name, price, quantity, option1, option2, image_url, sort_order)`)
@@ -376,7 +395,8 @@ export default function POSPage() {
                         .map((v: any) => ({
                             id: v.id,
                             name: v.name,
-                            price: Number(v.price ?? p.price) || 0,
+                            // A size with no price of its own sells at the product price.
+                            price: Number(v.price) > 0 ? Number(v.price) : Number(p.price) || 0,
                             quantity: Number(v.quantity ?? 0) || 0,
                             option1: v.option1 ?? null,
                             option2: v.option2 ?? null,
@@ -397,10 +417,16 @@ export default function POSPage() {
                         variants.find((v) => v.image_url)?.image_url ||
                         '';
 
+                    // Most outfits are priced per size, so the product's own price is 0: show the lowest size price.
+                    const sizePrices = variants.map((v) => v.price).filter((n) => n > 0);
+                    const ownPrice = Number(p.price) || 0;
+
                     return {
                         id: p.id,
                         name: p.name,
-                        price: p.price,
+                        price: ownPrice,
+                        displayPrice: sizePrices.length ? Math.min(...sizePrices) : ownPrice,
+                        priceIsFrom: new Set(sizePrices).size > 1,
                         quantity: effectiveQuantity,
                         category: p.categories?.name || 'Uncategorized',
                         image: primaryImage,
@@ -432,13 +458,19 @@ export default function POSPage() {
             const todayStart = new Date();
             todayStart.setHours(0, 0, 0, 0);
 
-            const { data } = await supabase
+            // The old filter (metadata->>pos_sale) is rejected by the data layer, so the button showed "..." forever.
+            const { data, error } = await supabase
                 .from('orders')
                 .select('total, payment_method, payment_status')
                 .gte('created_at', todayStart.toISOString())
-                .eq('metadata->>pos_sale', 'true');
+                .contains('metadata', { pos_sale: true });
 
+            if (error) {
+                setDailySummaryFailed(true);
+                return;
+            }
             if (data) {
+                setDailySummaryFailed(false);
                 const paid = data.filter(o => o.payment_status === 'paid');
                 setDailySummary({
                     totalSales: paid.reduce((s, o) => s + Number(o.total), 0),
@@ -448,7 +480,9 @@ export default function POSPage() {
                     momoSales: paid.filter(o => o.payment_method === 'moolre').reduce((s, o) => s + Number(o.total), 0),
                 });
             }
-        } catch {}
+        } catch {
+            setDailySummaryFailed(true);
+        }
     };
 
     // ─── Variant Picker ─────────────────────────────────────────────────────
@@ -616,29 +650,44 @@ export default function POSPage() {
             customer: selectedCustomer,
             note: holdNote || `${cart.length} items - GH₵${money(grandTotal)}`,
             heldAt: Date.now(),
+            orderDiscount,
         };
-        const updated = [...heldOrders, held];
-        setHeldOrders(updated);
-        saveHeldOrders(updated);
+        // Built from the latest list, so two holds in quick succession both stay.
+        setHeldOrders((prev) => {
+            const updated = [...prev, held];
+            saveHeldOrders(updated);
+            return updated;
+        });
         emptyCart();
         setSelectedCustomer(null);
         setHoldNote('');
         playSound('hold');
     // eslint-disable-next-line react-hooks/exhaustive-deps -- grandTotal is defined later (computed); callback uses current value at invoke time
-    }, [cart, selectedCustomer, holdNote, heldOrders, emptyCart]);
+    }, [cart, selectedCustomer, holdNote, orderDiscount, emptyCart]);
 
     const recallOrder = (holdId: string) => {
         const order = heldOrders.find(h => h.id === holdId);
         if (!order) return;
 
+        // Swap in one step: the recalled order leaves the list, and the cart on screen (if any) joins it.
+        // Doing it as two separate updates lost the cart that had just been put on hold.
+        let updated = heldOrders.filter(h => h.id !== holdId);
         if (cart.length > 0) {
-            holdCurrentOrder();
+            updated = [...updated, {
+                id: `hold-${Date.now()}`,
+                cart: [...cart],
+                customer: selectedCustomer,
+                note: holdNote || `${cart.length} items - GH₵${money(grandTotal)}`,
+                heldAt: Date.now(),
+                orderDiscount,
+            }];
+            setHoldNote('');
         }
-        setCart(order.cart);
-        setSelectedCustomer(order.customer);
-        const updated = heldOrders.filter(h => h.id !== holdId);
         setHeldOrders(updated);
         saveHeldOrders(updated);
+        setCart(order.cart);
+        setOrderDiscount(order.orderDiscount || 0);
+        setSelectedCustomer(order.customer);
         setShowHeldOrders(false);
         playSound('add');
     };
@@ -832,6 +881,8 @@ export default function POSPage() {
                 setOrderDiscount(0);
                 playSound('success');
                 fetchDailySummary();
+                // Show the stock that is left after this sale.
+                fetchData(true);
 
                 if (customerEmail && customerEmail !== 'pos-walkin@store.local') {
                     const { data: { session } } = await supabase.auth.getSession();
@@ -875,6 +926,8 @@ export default function POSPage() {
                 setOrderDiscount(0);
                 playSound('success');
                 fetchDailySummary();
+                // Show the stock that is left after this sale.
+                fetchData(true);
             }
         } catch (error: any) {
             console.error('Checkout failed:', error);
@@ -968,12 +1021,12 @@ export default function POSPage() {
                             )}
 
                             <button
-                                onClick={() => setShowDailySummary(true)}
+                                onClick={() => { if (dailySummary) setShowDailySummary(true); else fetchDailySummary(); }}
                                 className="px-3 py-2.5 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors text-sm font-medium hidden sm:flex items-center"
                                 title="Today's Sales"
                             >
                                 <i className="ri-line-chart-line mr-1" />
-                                {dailySummary ? `GH₵${dailySummary.totalSales.toFixed(0)}` : '...'}
+                                {dailySummary ? `GH₵${dailySummary.totalSales.toFixed(0)}` : dailySummaryFailed ? 'Sales unavailable' : '...'}
                             </button>
 
                             {lastReceipt && (
@@ -1101,7 +1154,10 @@ export default function POSPage() {
                                         <div className="p-2.5 flex flex-col flex-1">
                                             <h3 className="text-xs font-semibold text-gray-900 line-clamp-2 mb-auto">{product.name}</h3>
                                             <div className="flex items-center justify-between mt-1.5">
-                                                <span className="text-gray-900 font-bold text-sm">{moneyLabel(product.price)}</span>
+                                                <span className="text-gray-900 font-bold text-sm">
+                                                    {product.priceIsFrom ? 'From ' : ''}
+                                                    {moneyLabel(product.displayPrice ?? product.price)}
+                                                </span>
                                                 {!outOfStock && (
                                                     <div className="w-7 h-7 rounded-full bg-gray-50 text-gray-900 flex items-center justify-center group-hover:bg-gray-900 group-hover:text-white transition-colors">
                                                         <i className="ri-add-line text-sm" />
@@ -1296,10 +1352,13 @@ export default function POSPage() {
                                     </h2>
                                     <p className="text-gray-500 mt-1">Order #{completedOrder.orderNumber}</p>
 
-                                    {!completedOrder.paymentPending && paymentMethod === 'cash' && changeDue > 0 && (
+                                    {/* From the finished sale. The live figure is wrong here: the cart is empty by now, so it showed the full cash handed over. */}
+                                    {!completedOrder.paymentPending &&
+                                        completedOrder.receiptData?.paymentMethod === 'cash' &&
+                                        Number(completedOrder.receiptData?.change) > 0 && (
                                         <div className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-4">
                                             <p className="text-sm text-gray-900">Change Due</p>
-                                            <p className="text-3xl font-bold text-gray-800">{moneyLabel(changeDue)}</p>
+                                            <p className="text-3xl font-bold text-gray-800">{moneyLabel(completedOrder.receiptData.change)}</p>
                                         </div>
                                     )}
 
