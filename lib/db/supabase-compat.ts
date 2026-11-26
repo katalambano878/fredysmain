@@ -291,17 +291,17 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any; count: number
 
   insert(payload: Row | Row[]) {
     this.action = "insert";
-    this.payload = payload;
+    this.payload = asJsonBody(payload);
     return this;
   }
   update(patch: Row) {
     this.action = "update";
-    this.payload = patch;
+    this.payload = asJsonBody(patch);
     return this;
   }
   upsert(payload: Row | Row[], opts?: { onConflict?: string }) {
     this.action = "upsert";
-    this.payload = payload;
+    this.payload = asJsonBody(payload);
     this.onConflictCols = opts?.onConflict
       ? opts.onConflict.split(",").map((c) => c.trim())
       : null;
@@ -997,6 +997,17 @@ function singularize(table: string): string {
   if (table.endsWith("ies")) return table.slice(0, -3) + "y";
   if (table.endsWith("s")) return table.slice(0, -1);
   return table;
+}
+
+/**
+ * The write body exactly as supabase-js would have sent it over HTTP:
+ * JSON.stringify drops `undefined` keys (so `update({ status, notes })` with
+ * no notes leaves the column alone instead of setting it to NULL) and turns
+ * Dates into ISO strings.
+ */
+function asJsonBody<T>(payload: T): T {
+  if (payload === undefined || payload === null) return payload;
+  return JSON.parse(JSON.stringify(payload));
 }
 
 // jsonb columns must be passed to pg as JSON text (PostgREST serializes ANY
