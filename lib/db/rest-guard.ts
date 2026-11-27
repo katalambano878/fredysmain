@@ -106,11 +106,12 @@ export async function resolveGuardActor(req: Request): Promise<GuardActor> {
       const account = await loadAccount(cfg, verified.userId);
       if (account) {
         if (cfg.staffRoles.includes(account.role)) return { kind: "staff", userId: verified.userId };
-        return {
-          kind: "user",
-          userId: verified.userId,
-          confirmedEmail: account.confirmed && account.email ? account.email : null,
-        };
+        // Sign-up on these shops marks the address confirmed without sending
+        // a link, so an email address proves nothing: someone could register
+        // a guest's address and read that guest's orders. Ownership is the
+        // user id only (emailColumn reads are pinned to it as well).
+        void account.confirmed;
+        return { kind: "user", userId: verified.userId, confirmedEmail: null };
       }
     }
   }
